@@ -1,0 +1,15 @@
+curl 'https://public.dm.files.1drv.com/y4mcDa9-nJe7jubjZQUMl_FPHlImRbSRV_-59oUbc8x_Pm00AeGN4vNs9TyW13jelQv2-rtzMkZ0GRq3WoQOVOhdu0YLyLkS-YKXfVYgIGnTt6-5T_bRTPq7OTQC1LEfcscaO6IEAPFT6Aqz41SawuPREFbI3JU8TMrSxC_RzbrnAXremilwjhCeMJc2O5hNlhYLhRDTkNUlWjmwIODkRRTohq9qbhB_WQ2Ophge0uvhbA' \
+  -H 'authority: public.dm.files.1drv.com' \
+  -H 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7' \
+  -H 'accept-language: en-US,en;q=0.9,es;q=0.8' \
+  -H 'referer: https://onedrive.live.com/' \
+  -H 'sec-ch-ua: "Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' \
+  -H 'sec-fetch-dest: iframe' \
+  -H 'sec-fetch-mode: navigate' \
+  -H 'sec-fetch-site: cross-site' \
+  -H 'sec-fetch-user: ?1' \
+  -H 'upgrade-insecure-requests: 1' \
+  -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36' \
+  --compressed --output sportsmot_dataset.zip
