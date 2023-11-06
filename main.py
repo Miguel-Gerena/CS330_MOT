@@ -36,7 +36,7 @@ def main(args):
     sports_dict = load_by_sport.get_videos_file_path_dict(args.counts_json_path, args.dataset_folder_path)
     sports_dict = load_by_sport.get_videos_file_path_dict(args.counts_json_path, args.dataset_folder_path)
     support, query = load_by_sport.create_support_query_split(sports_dict, args.num_support, args.num_query, frame_selection_strategy=strategy_function)
-    # print(f"\n\nJUST FINISHED MAKING SUPPORT AND QUERY SETS:\nSupport set: {support}\nQuery set: {query}")
+    print(f"\n\nJUST FINISHED MAKING SUPPORT AND QUERY SETS:\n\nSupport set: {support}\nQuery set: {query}")
 
 
 
