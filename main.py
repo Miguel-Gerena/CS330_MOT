@@ -5,13 +5,20 @@ import sys
 
 import torch 
 import tensorboard
+sys.path.append('./')
+import maml
 sys.path.append('./ak_util/')
 import load_by_sport
 
 
 
+TRAIN_COUNTS_JSON_PATH = './train_counts.json'
+VAL_COUNTS_JSON_PATH = './val_counts.json'
+TEST_COUNTS_JSON_PATH = './test_counts.json'
 
-
+TRAIN_DATASET_PATH = './dataset/train/'
+VAL_DATASET_PATH = './dataset/val/'
+TEST_DATASET_PATH = './dataset/test/'
 
 def main(args):
     if args.device == "gpu" and torch.cuda.is_available():
@@ -32,28 +39,55 @@ def main(args):
     # print(f'log_dir: {log_dir}')
     # writer = tensorboard.SummaryWriter(log_dir=log_dir)
 
-    # Get support/query sets based off args
-    sports_dict = load_by_sport.get_videos_file_path_dict(args.counts_json_path, args.dataset_folder_path)
-    sports_dict = load_by_sport.get_videos_file_path_dict(args.counts_json_path, args.dataset_folder_path)
-    support, query = load_by_sport.create_support_query_split(sports_dict, args.num_support, args.num_query, frame_selection_strategy=strategy_function)
-    print(f"\n\nJUST FINISHED MAKING SUPPORT AND QUERY SETS:\n\nSupport set: {support}\nQuery set: {query}")
+    # if args.model == 'maml':
+    #     maml = MAML(
+    #     args.num_way,
+    #     args.num_inner_steps,
+    #     args.inner_lr,
+    #     args.learn_inner_lrs,
+    #     args.outer_lr,
+    #     log_dir,
+    #     DEVICE
+    # )
+    # else:
+    #     print(f"ERROR: Model '{args.model}' is not implemented yet")
+    #     exit()
+
+    if not args.test:
+        # Load the train dictionary
+        train_sports_dict = load_by_sport.get_videos_file_path_dict(TRAIN_COUNTS_JSON_PATH, TRAIN_DATASET_PATH)
+        
+        train_tasks = load_by_sport.get_batches(train_sports_dict, args.batch_size, args.num_support_videos, args.num_query_videos, args.num_support, args.num_query, strategy_function)
+        # print(f"\n\n Tasks: {len(train_tasks)}")
+
+        val_sports_dict = load_by_sport.get_videos_file_path_dict(VAL_COUNTS_JSON_PATH, VAL_DATASET_PATH)
+        val_tasks = load_by_sport.get_batches(val_sports_dict, args.batch_size * 4, args.num_support_videos, args.num_query_videos, args.num_support, args.num_query, strategy_function)
+        # print(f"\n\n Tasks: {len(val_tasks)}")
 
 
+    else:
+        pass
 
-
+    # if args.model == 'maml':
+    #     maml.train(
+    #         dataloader_meta_train,
+    #         dataloader_meta_val,
+    #         writer
+    #     )
+    
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--counts_json_path", default='./train_counts.json', 
-                        help="Path to the JSON file containing video categorization.")
-    parser.add_argument("--dataset_folder_path", default='./dataset/train/', 
-                        help="Path to the data folder.")
     parser.add_argument('--log_dir', type=str, default=None,
                         help='directory to save to or load from')
     parser.add_argument('--model', type=str, default='maml',
                         help='model to run')
     parser.add_argument('--frame_selection_strategy', type=str, default="consecutive_frame_selection",
                         help='The function in load_by_sport file that we want to use for splitting the support/query sets. EX: consecutive vs random')
+    parser.add_argument('--num_support_videos', type=int, default=2,
+                        help='number of videos to include in the support set')
+    parser.add_argument('--num_query_videos', type=int, default=5,
+                        help='number of videos to include in the query set')
     parser.add_argument('--num_way', type=int, default=5,
                         help='number of classes in a task')
     parser.add_argument('--num_support', type=int, default=5,
