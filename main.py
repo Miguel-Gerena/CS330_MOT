@@ -53,27 +53,32 @@ def main(args):
     #     print(f"ERROR: Model '{args.model}' is not implemented yet")
     #     exit()
 
+    # if args.checkpoint_step > -1:
+    #     maml.load(args.checkpoint_step)
+    # else:
+    #     print('Checkpoint loading skipped.')
+
+
     if not args.test:
         # Load the train dictionary
         train_sports_dict = load_by_sport.get_videos_file_path_dict(TRAIN_COUNTS_JSON_PATH, TRAIN_DATASET_PATH)
-        
+
         train_tasks = load_by_sport.get_batches(train_sports_dict, args.batch_size, args.num_support_videos, args.num_query_videos, args.num_support, args.num_query, strategy_function)
-        # print(f"\n\n Tasks: {len(train_tasks)}")
+        print(f"Tasks: {len(train_tasks)}")
 
         val_sports_dict = load_by_sport.get_videos_file_path_dict(VAL_COUNTS_JSON_PATH, VAL_DATASET_PATH)
         val_tasks = load_by_sport.get_batches(val_sports_dict, args.batch_size * 4, args.num_support_videos, args.num_query_videos, args.num_support, args.num_query, strategy_function)
-        # print(f"\n\n Tasks: {len(val_tasks)}")
-
-
-    else:
-        pass
+        print(f"\n\n Tasks: {len(val_tasks)}")
 
     # if args.model == 'maml':
     #     maml.train(
-    #         dataloader_meta_train,
-    #         dataloader_meta_val,
+    #         train_tasks,
+    #         val_tasks,
     #         writer
     #     )
+
+    else:
+        pass
     
 
 if __name__ == '__main__':
@@ -102,7 +107,7 @@ if __name__ == '__main__':
                         help='whether to optimize inner-loop learning rates')
     parser.add_argument('--outer_lr', type=float, default=0.001,
                         help='outer-loop learning rate')
-    parser.add_argument('--batch_size', type=int, default=15,
+    parser.add_argument('--batch_size', type=int, default=10,
                         help='number of tasks per outer-loop update')
     parser.add_argument('--num_train_iterations', type=int, default=15000,
                         help='number of outer-loop updates to train for')

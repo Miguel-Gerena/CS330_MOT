@@ -1,7 +1,9 @@
 import json
 import os
 import random
-
+import torch
+import numpy as np
+from PIL import Image
 # data_path= './train_counts.json'
 
 def get_sport_split_dict(counts_json_path):
@@ -33,7 +35,7 @@ def get_sport_split_dict(counts_json_path):
     }
     return sports_to_videos
 
-# Gets the file paths for each of the video ids 
+#### Gets the file paths for each of the video ids ####
 def find_sport_video_paths(actual_video_path, sports_to_videos):
     sport_video_paths = {}
 
@@ -49,7 +51,7 @@ def find_sport_video_paths(actual_video_path, sports_to_videos):
 
     return sport_video_paths
 
-# Gets the sports dictionary and adds each videos file path to the dictionary
+#### Gets the sports dictionary and adds each videos file path to the dictionary ####
 def get_videos_file_path_dict(counts_json_path, actual_video_path):
     # Get the lists of video ids for each sport
     sports_list_dict = get_sport_split_dict(counts_json_path)
@@ -58,7 +60,7 @@ def get_videos_file_path_dict(counts_json_path, actual_video_path):
 
     return sports_dict
 
-# Parses the ground truth file to be a dictionary for a given video
+#### Parses the ground truth file to be a dictionary for a given video ####
 def parse_ground_truth(gt_path):
     with open(gt_path, 'r') as file:
         annotations = [line.strip().split(',') for line in file.readlines()]
@@ -69,11 +71,11 @@ def parse_ground_truth(gt_path):
     ]
     return parsed_annotations
 
-# Assigns the frames randomly
+#### Assigns the frames randomly ####
 def random_frame_selection(all_frames, num_support):
     return random.sample(all_frames, num_support)
 
-#Assigns the frames in a consecutive sequence
+#### Assigns the frames in a consecutive sequence ####
 def consecutive_frame_selection(all_frames, num_support, exclude_frames=[]):
     frames_set = set(exclude_frames)
     available_frames = [frame for frame in all_frames if frame not in frames_set]
@@ -85,9 +87,7 @@ def consecutive_frame_selection(all_frames, num_support, exclude_frames=[]):
 
 
 
-
-
-# Creates the support/query splits (BUT HAS SPORT LABELS, must remove labels before running on model to reduce bias Note: see combine_support_query_sets() below)
+#### Creates the support/query splits (BUT HAS SPORT LABELS, must remove labels before running on model to reduce bias Note: see combine_support_query_sets() below) ####
 def create_support_query_split(sport_video_paths, num_support_videos, num_query_videos, k_support, k_query, frame_selection_strategy):
     support_set = {}
     query_set = {}
@@ -129,10 +129,12 @@ def create_support_query_split(sport_video_paths, num_support_videos, num_query_
             'same_video': query_data_same,
             'different_video': query_data_different
         }
-
+        # print(f"Number of 'same' videos in the query set for sport {sport}: {len(query_data_same)}")
+        # print(f"Number of 'different' videos in the query set for sport {sport}: {len(query_data_different)}")
+        # print(query_set[sport])
     return support_set, query_set
 
-# Gets the ground truth labels for the given frames
+#### Gets the ground truth labels for the given frames ####
 def get_data_for_video(video_id, video_path, num_support, frame_selection_function):
     frame_directory = os.path.join(video_path, 'img1')
     # Get all frame filenames and ground truth annotations
@@ -164,33 +166,31 @@ def get_data_for_video(video_id, video_path, num_support, frame_selection_functi
 
 
 
-# Since the function above splits the support/query by sport to ensure an equal number of videos per sport, 
-# this function gets rid of the sport labels and mixes up the order of the videos (not the frames) 
+#### Since the function above splits the support/query by sport to ensure an equal number of videos per sport, ####
+#### this function gets rid of the sport labels and mixes up the order of the videos (not the frames)          ####
 def combine_support_query_sets(support_sets, query_sets):
 
-    combined_support_set = {'frames': {}, 'annotations': {}}
-    combined_query_set = {'frames': {}, 'annotations': {}}
+    combined_support_set = {'frames': [], 'annotations': []}
+    combined_query_set = {'frames': [], 'annotations': []}
 
-    # Shuffle the video IDs for the support set
-    shuffled_support_video_ids = []
+    # Add all frame names, paths and annotations from the support sets
     for sport, batches in support_sets.items():
-        shuffled_support_video_ids.extend(random.sample(batches, len(batches)))
+        for batch in batches:
+            # Extend the combined list with tuples of (frame_id, frame path)
+            combined_support_set['frames'].extend([(frame_id, frame) for frame_id, frame in batch['frames'].items()])
+            combined_support_set['annotations'].extend([annotation for _, annotation in batch['annotations'].items()])
 
-    # Shuffle the video IDs for the query set
-    shuffled_query_video_ids = []
+    # Add all frame paths and annotations from the query sets
     for sport, query in query_sets.items():
-        shuffled_query_video_ids.extend(random.sample(query['same_video'] + query['different_video'], len(query['same_video'] + query['different_video'])))
-
-    # Extract frames and annotations based on the shuffled video IDs while maintaining the frame order within each video
-    for batch in shuffled_support_video_ids:
-        combined_support_set['frames'].update(batch['frames'])
-        combined_support_set['annotations'].update(batch['annotations'])
-
-    for batch in shuffled_query_video_ids:
-        combined_query_set['frames'].update(batch['frames'])
-        combined_query_set['annotations'].update(batch['annotations'])
+        for data in query['same_video'] + query['different_video']:
+            # Extend the combined list with tuples of (frame_id, frame path)
+            combined_query_set['frames'].extend([(frame_id, frame) for frame_id, frame in data['frames'].items()])
+            combined_query_set['annotations'].extend([annotation for _, annotation in data['annotations'].items()])
 
     return combined_support_set, combined_query_set
+
+
+
 
 
 def get_batches(dict, batch_size, num_support_videos, num_query_videos, num_support, num_query, strategy_function):
@@ -198,15 +198,59 @@ def get_batches(dict, batch_size, num_support_videos, num_query_videos, num_supp
         tasks = []
         for task_index in range(batch_size):
             # Shuffle and create new support/query sets for each task
-            train_support, train_query = create_support_query_split(dict, num_support_videos, num_query_videos, num_support, num_query, frame_selection_strategy=strategy_function)
+            support, query = create_support_query_split(dict, num_support_videos, num_query_videos, num_support, num_query, frame_selection_strategy=strategy_function)
             
             # Combine and shuffle video IDs within the support and query sets
-            train_support_set, train_query_set = combine_support_query_sets(train_support, train_query)
+            support_set, query_set = combine_support_query_sets(support, query)
+
+            support_frames_tensor, support_labels_tensor, query_frames_tensor, query_labels_tensor = convert_support_query_to_tensors(support_set, query_set)
+
             
-            tasks.append((train_support_set, train_query_set))
+            tasks.append((support_frames_tensor, support_labels_tensor, query_frames_tensor, query_labels_tensor))
         #     print(f"Task {task_index + 1}:")
-        #     print(f"Support Set: {train_support_set}")
-        #     print(f"Query Set: {train_query_set}\n")
 
         # print(f"\n\n Tasks: {len(tasks)}")
         return tasks
+
+
+
+#### Load the image, ensuring that it is in RGB format ####
+def load_image(path):
+    with Image.open(path) as img:
+        img = img.convert('RGB')
+        image_array = np.array(img)
+        # Transpose the array to have the channel dimension first if necessary
+        image_array = image_array.transpose((2, 0, 1))
+    return image_array
+
+#### Create a combined array of all annotation features: frame_id, player_id, and bbox ####
+def convert_annotations_to_features(annotations):
+
+    features = []
+    for anno in annotations:
+        frame_id = anno['frame_id']
+        player_id = anno['player_id']
+        bbox = anno['bbox']
+        # Concatenate frame_id, player_id, and bbox into a single array
+        features.append([frame_id, player_id] + list(bbox))
+    return np.array(features, dtype=np.float32)
+
+#### Converts a dict to a tensor ####
+def convert_to_tensors(data_dict):
+
+    frames = np.stack([load_image(path) for _, path in data_dict['frames']])
+    frames_tensor = torch.tensor(frames, dtype=torch.float32)
+    
+    # Convert annotation data to features
+    annotations_features = convert_annotations_to_features(data_dict['annotations'])
+    annotations_tensor = torch.tensor(annotations_features, dtype=torch.float32)
+    
+    return frames_tensor, annotations_tensor
+
+#### Convert both support/query set dictionaries to tensors ####
+def convert_support_query_to_tensors(support_set, query_set):
+
+    support_frames_tensor, support_annotations_tensor = convert_to_tensors(support_set)
+    query_frames_tensor, query_annotations_tensor = convert_to_tensors(query_set)
+
+    return support_frames_tensor, support_annotations_tensor, query_frames_tensor, query_annotations_tensor
