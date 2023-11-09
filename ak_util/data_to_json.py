@@ -37,8 +37,16 @@ volleyball_path = './splits_txt/volleyball.txt'
 train_path = './splits_txt/train.txt'
 val_path = './splits_txt/val.txt'
 test_path = './splits_txt/test.txt'
+combined_path = './splits_txt/combined_train_val_txt/combined_train_val.txt'
 
-# Perform the check and save results
-for path, name in [(train_path, 'train'), (val_path, 'val'), (test_path, 'test')]:
-    counts = check_string_in_files(path, basketball_path, football_path, volleyball_path)
-    save_counts_to_json(counts, f'{name}_counts.json')
+# # Perform the check and save results
+# for path, name in [(train_path, 'train'), (val_path, 'val'), (test_path, 'test')]:
+#     counts = check_string_in_files(path, basketball_path, football_path, volleyball_path)
+#     save_counts_to_json(counts, f'{name}_counts.json')
+
+
+counts = check_string_in_files(combined_path, basketball_path, football_path, volleyball_path)
+save_counts_to_json(counts, 'train_val_combined_counts.json')
+
+
+

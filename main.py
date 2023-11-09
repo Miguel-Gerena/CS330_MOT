@@ -66,9 +66,9 @@ def main(args):
         train_tasks = load_by_sport.get_batches(train_sports_dict, args.batch_size, args.num_support_videos, args.num_query_videos, args.num_support, args.num_query, strategy_function)
         print(f"Tasks: {len(train_tasks)}")
 
-        val_sports_dict = load_by_sport.get_videos_file_path_dict(VAL_COUNTS_JSON_PATH, VAL_DATASET_PATH)
-        val_tasks = load_by_sport.get_batches(val_sports_dict, args.batch_size * 4, args.num_support_videos, args.num_query_videos, args.num_support, args.num_query, strategy_function)
-        print(f"\n\n Tasks: {len(val_tasks)}")
+        # val_sports_dict = load_by_sport.get_videos_file_path_dict(VAL_COUNTS_JSON_PATH, VAL_DATASET_PATH)
+        # val_tasks = load_by_sport.get_batches(val_sports_dict, args.batch_size * 4, args.num_support_videos, args.num_query_videos, args.num_support, args.num_query, strategy_function)
+        # print(f"\n\n Tasks: {len(val_tasks)}")
 
     # if args.model == 'maml':
     #     maml.train(
@@ -91,7 +91,7 @@ if __name__ == '__main__':
                         help='The function in load_by_sport file that we want to use for splitting the support/query sets. EX: consecutive vs random')
     parser.add_argument('--num_support_videos', type=int, default=2,
                         help='number of videos to include in the support set')
-    parser.add_argument('--num_query_videos', type=int, default=5,
+    parser.add_argument('--num_query_videos', type=int, default=2,
                         help='number of videos to include in the query set')
     parser.add_argument('--num_way', type=int, default=5,
                         help='number of classes in a task')

@@ -50,7 +50,7 @@ def plot_sports_counts(train_counts, val_counts, test_counts):
     # Create legend & Show graphic
     plt.legend()
     plt.title('Counts of Videos for Each Sport in the Train, Validation, and Test sets')
-    plt.savefig('data_distribution.png')
+    plt.savefig('updated_data_distribution.png')
 
 
 
