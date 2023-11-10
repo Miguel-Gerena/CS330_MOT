@@ -191,26 +191,34 @@ def combine_support_query_sets(support_sets, query_sets):
 
 
 
-
-
-def get_batches(dict, batch_size, num_support_videos, num_query_videos, num_support, num_query, strategy_function):
-
+def get_batches(dict, batch_size, num_support_videos, num_query_videos, num_support, num_query, num_tasks_per_batch, device, strategy_function):
+    batch_tasks = []
+    for task_index in range(batch_size):
+        print(f"getting batch count {batch_size} Iteration: {task_index}")
         tasks = []
-        for task_index in range(batch_size):
+        for i in range(num_tasks_per_batch):
+            print(f"getting task count {num_tasks_per_batch} Task number: {i}")
             # Shuffle and create new support/query sets for each task
             support, query = create_support_query_split(dict, num_support_videos, num_query_videos, num_support, num_query, frame_selection_strategy=strategy_function)
-            
+            print("created the support query split")
             # Combine and shuffle video IDs within the support and query sets
             support_set, query_set = combine_support_query_sets(support, query)
+            print("combined the sets")
+            support_frames_tensor, support_labels_tensor, query_frames_tensor, query_labels_tensor = convert_support_query_to_tensors(support_set, query_set, device)
+            support_frames_tensor = support_frames_tensor.to(device)
+            support_labels_tensor = support_labels_tensor.to(device)
+            query_frames_tensor = query_frames_tensor.to(device)
+            query_labels_tensor = query_labels_tensor.to(device)
 
-            support_frames_tensor, support_labels_tensor, query_frames_tensor, query_labels_tensor = convert_support_query_to_tensors(support_set, query_set)
-
-            
+            print("converted splits to tensors")
+            # Add this task to the batch_tasks
             tasks.append((support_frames_tensor, support_labels_tensor, query_frames_tensor, query_labels_tensor))
-        #     print(f"Task {task_index + 1}:")
-
-        # print(f"\n\n Tasks: {len(tasks)}")
-        return tasks
+            print("appended the task to the batches list")
+        # Add the batch_tasks to the main tasks list
+        batch_tasks.append(tasks)
+    
+    # After the loop, tasks will be a list of batches, each containing num_tasks_per_batch tasks
+    return batch_tasks
 
 
 
@@ -236,7 +244,7 @@ def convert_annotations_to_features(annotations):
     return np.array(features, dtype=np.float32)
 
 #### Converts a dict to a tensor ####
-def convert_to_tensors(data_dict):
+def convert_to_tensors(data_dict, device):
 
     frames = np.stack([load_image(path) for _, path in data_dict['frames']])
     frames_tensor = torch.tensor(frames, dtype=torch.float32)
@@ -248,9 +256,10 @@ def convert_to_tensors(data_dict):
     return frames_tensor, annotations_tensor
 
 #### Convert both support/query set dictionaries to tensors ####
-def convert_support_query_to_tensors(support_set, query_set):
+def convert_support_query_to_tensors(support_set, query_set, device):
 
-    support_frames_tensor, support_annotations_tensor = convert_to_tensors(support_set)
-    query_frames_tensor, query_annotations_tensor = convert_to_tensors(query_set)
+    support_frames_tensor, support_annotations_tensor = convert_to_tensors(support_set, device)
+    query_frames_tensor, query_annotations_tensor = convert_to_tensors(query_set, device)
+
 
     return support_frames_tensor, support_annotations_tensor, query_frames_tensor, query_annotations_tensor
