@@ -1,5 +1,10 @@
-import sys
+sys.path.append('./')
 sys.path.append('..')
+sys.path.append('./ak_util/')
+from data import DataGenerator  
+
+
+import sys
 import argparse
 import os
 import random
@@ -13,11 +18,8 @@ from torch import nn
 import torch.nn.functional as F
 from torch import autograd
 from torch.utils import tensorboard
-sys.path.append('./')
 import dataloader
 # import maml
-sys.path.append('./ak_util/')
-import load_by_sport
 
 
 NUM_INPUT_CHANNELS = 1
@@ -461,6 +463,20 @@ def main(args):
     strategy_function = getattr(load_by_sport, args.frame_selection_strategy, None)
     if strategy_function is None:
         raise ValueError(f"Invalid frame selection strategy: {args.frame_selection_strategy}")
+    
+    meta_train_iterable = DataGenerator(
+    args.num_support_videos,
+    args.num_support + args.num_query,
+    batch_type="train",
+)
+    meta_train_loader = iter(
+        torch.utils.data.DataLoader(
+            meta_train_iterable,
+            batch_size=args.meta_batch_size,
+            num_workers=args.num_workers,
+            pin_memory=True,
+        )
+    )
 
 
     # log_dir = args.log_dir

@@ -47,7 +47,7 @@ class DataGenerator(IterableDataset):
         batch_type,
         number_of_sports=3,
         config={},
-        cache=True,
+        cache=False,
     ):
         """
         Args:
