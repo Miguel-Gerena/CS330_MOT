@@ -6,15 +6,15 @@ import random
 import json
 import numpy as np
 import torch
-
 import torch.multiprocessing
 torch.multiprocessing.set_sharing_strategy('file_system')
-
+from torch.utils.data import DataLoader, BatchSampler, RandomSampler
 from torch import nn
 import torch.nn.functional as F
 from torch import autograd
 from torch.utils import tensorboard
-# sys.path.append('./')
+sys.path.append('./')
+import dataloader
 # import maml
 sys.path.append('./ak_util/')
 import load_by_sport
@@ -463,62 +463,84 @@ def main(args):
         raise ValueError(f"Invalid frame selection strategy: {args.frame_selection_strategy}")
 
 
-    log_dir = args.log_dir
-    if log_dir is None:
-        log_dir = f'./logs/model_{args.model}/way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.batch_size}'  # pylint: disable=line-too-long
-    print(f'log_dir: {log_dir}')
-    writer = tensorboard.SummaryWriter(log_dir=log_dir)
+    # log_dir = args.log_dir
+    # if log_dir is None:
+    #     log_dir = f'./logs/model_{args.model}/way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.batch_size}'  # pylint: disable=line-too-long
+    # print(f'log_dir: {log_dir}')
+    # writer = tensorboard.SummaryWriter(log_dir=log_dir)
 
-    if args.model == 'maml':
-        maml = MAML(
-        args.num_way,
-        args.num_inner_steps,
-        args.inner_lr,
-        args.learn_inner_lrs,
-        args.outer_lr,
-        log_dir,
-        DEVICE
-    )
-    else:
-        print(f"ERROR: Model '{args.model}' is not implemented yet")
-        exit()
+    # if args.model == 'maml':
+    #     maml = MAML(
+    #     args.num_way,
+    #     args.num_inner_steps,
+    #     args.inner_lr,
+    #     args.learn_inner_lrs,
+    #     args.outer_lr,
+    #     log_dir,
+    #     DEVICE
+    # )
+    # else:
+    #     print(f"ERROR: Model '{args.model}' is not implemented yet")
+    #     exit()
 
-    if args.checkpoint_step > -1:
-        maml.load(args.checkpoint_step)
-    else:
-        print('Checkpoint loading skipped.')
+    # if args.checkpoint_step > -1:
+    #     maml.load(args.checkpoint_step)
+    # else:
+    #     print('Checkpoint loading skipped.')
 
 
     if not args.test:
         num_training_tasks = args.batch_size * (args.num_train_iterations - args.checkpoint_step - 1)
-        # Load the train dictionary
+
+        # # Load the train dictionary
         train_sports_dict = load_by_sport.get_videos_file_path_dict(TRAIN_COUNTS_JSON_PATH, TRAIN_DATASET_PATH)
 
-        print(f"loading meta train num batches: {args.batch_size}\nWith num tasks per batch: {num_training_tasks}")
-        train_tasks = load_by_sport.get_batches(train_sports_dict, args.batch_size, args.num_support_videos, args.num_query_videos, args.num_support, args.num_query, num_training_tasks, DEVICE, strategy_function)
+        # print(f"loading meta train num batches: {args.batch_size}\nWith num tasks per batch: {num_training_tasks}")
+        # train_tasks = load_by_sport.get_batches(train_sports_dict, args.batch_size, args.num_support_videos, args.num_query_videos, args.num_support, args.num_query, num_training_tasks, DEVICE, strategy_function)
 
 
-        print(f"Done\nloading meta validation num batches: {args.batch_size}\nWith num tasks per batch: {args.batch_size * 4}")
-        val_sports_dict = load_by_sport.get_videos_file_path_dict(VAL_COUNTS_JSON_PATH, VAL_DATASET_PATH)
-        val_tasks = load_by_sport.get_batches(val_sports_dict, args.batch_size, args.num_support_videos, args.num_query_videos, args.num_support, args.num_query, args.batch_size * 4, DEVICE, strategy_function)
-        print(f"Done")
+        # print(f"Done\nloading meta validation num batches: {args.batch_size}\nWith num tasks per batch: {args.batch_size * 4}")
+        # val_sports_dict = load_by_sport.get_videos_file_path_dict(VAL_COUNTS_JSON_PATH, VAL_DATASET_PATH)
+        # val_tasks = load_by_sport.get_batches(val_sports_dict, args.batch_size, args.num_support_videos, args.num_query_videos, args.num_support, args.num_query, args.batch_size * 4, DEVICE, strategy_function)
+        # print(f"Done")
 
-        train_tasks = [(support_frames.to(DEVICE), support_labels.to(DEVICE), query_frames.to(DEVICE), query_labels.to(DEVICE)) for support_frames, support_labels, query_frames, query_labels in train_tasks]
-        val_tasks = [(support_frames.to(DEVICE), support_labels.to(DEVICE), query_frames.to(DEVICE), query_labels.to(DEVICE)) for support_frames, support_labels, query_frames, query_labels in val_tasks]
 
-    if args.model == 'maml':
-        maml.train(
-            train_tasks,
-            val_tasks,
-            writer
+        custom_dataset = dataloader.CustomDataset(train_sports_dict, args.num_support_videos, args.num_query_videos, args.num_support, args.num_query, strategy_function)
+        custom_lengeth = len(custom_dataset)
+
+        print("custom dataset length: ", custom_lengeth)
+        batch_sampler = BatchSampler(
+            RandomSampler(range(custom_lengeth), replacement=True),
+            args.batch_size * num_training_tasks,
+            drop_last=True
         )
+        train_tasks = DataLoader(custom_dataset, batch_sampler=batch_sampler, num_workers=args.num_workers)
+        print(f"num tasks per batch should be {num_training_tasks}")
+        i = 0
+        for batch in train_tasks:
+            print(f"batch num: {i}")
+            support_frames, support_labels, query_frames, query_labels = batch
+
+            print("Support Frames Shape:", support_frames.shape)
+            print("Support Labels Shape:", support_labels.shape)
+            print("Query Frames Shape:", query_frames.shape)
+            print("Query Labels Shape:", query_labels.shape)
+            i = i +1
+            
+
+    # if args.model == 'maml':
+    #     maml.train(
+    #         train_tasks,
+    #         val_tasks,
+    #         writer
+    #     )
 
     else:
         print(f"loading meta test num batches: 1\nWith num tasks per batch: {NUM_TEST_TASKS}")
         test_sports_dict = load_by_sport.get_videos_file_path_dict(TEST_COUNTS_JSON_PATH, TEST_DATASET_PATH)
         test_tasks = load_by_sport.get_batches(test_sports_dict, 1, args.num_support_videos, args.num_query_videos, args.num_support, args.num_query, NUM_TEST_TASKS, DEVICE, strategy_function)
         print(f"Done\nNow in the testing process..")
-        maml.test(test_tasks)
+        # maml.test(test_tasks)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -554,6 +576,8 @@ if __name__ == '__main__':
                         help='number of outer-loop updates to train for')
     parser.add_argument('--test', default=False, action='store_true',
                         help='train or test')
+    parser.add_argument('--num_workers', type=int, default=2, 
+                        help=('needed to specify dataloader'))
     parser.add_argument('--checkpoint_step', type=int, default=-1,
                         help=('checkpoint iteration to load for resuming '
                               'training, or for evaluation (-1 is ignored)'))
