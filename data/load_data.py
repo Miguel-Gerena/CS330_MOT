@@ -73,6 +73,8 @@ class DataGenerator(IterableDataset):
         self.dim_input = np.prod(self.img_size)
         self.dim_output = frames_per_video
         self.num_videos = num_videos 
+        self.image_caching = cache
+        self.stored_images = {}
 
         # to track what was the last frame that was sampled for each sport
         self.last_sample = defaultdict(int)
@@ -88,8 +90,8 @@ class DataGenerator(IterableDataset):
         Returns:
             1 channel image
         """
-        # if self.image_caching and (filename in self.stored_images):
-        #     return self.stored_images[filename]
+        if self.image_caching and (filename in self.stored_images):
+            return self.stored_images[filename]
         id += 1
         image_number = str(id)
         image_number = "0" * (6 - len(image_number)) + image_number
@@ -98,8 +100,8 @@ class DataGenerator(IterableDataset):
         image = image.reshape([dim_input])
         image = image.astype(np.float32) / image.max()
         image = 1.0 - image
-        # if self.image_caching:
-        #     self.stored_images[filename] = image
+        if self.image_caching:
+            self.stored_images[filename] = image
         return image, id
 
     def _sample(self):

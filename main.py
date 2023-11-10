@@ -468,6 +468,7 @@ def main(args):
     args.num_support_videos,
     args.num_support + args.num_query,
     batch_type="train",
+    cache=True
 )
     meta_train_loader = iter(
         torch.utils.data.DataLoader(
