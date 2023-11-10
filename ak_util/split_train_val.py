@@ -74,12 +74,13 @@ def verify_video_ids_in_file(video_id_list, file_path):
 dataset_path = './dataset/'
 train_path = os.path.join(dataset_path, 'train_og/')
 val_path = os.path.join(dataset_path, 'val_og/')
-new_folder_path = os.path.join(dataset_path, 'combined_train_val')
+new_folder_path =  './combined_train_val'
+# new_folder_path = os.path.join(dataset_path, 'combined_train_val')
 
-txt_dataset_path = './splits_txt/'
-train_txt_path = os.path.join(txt_dataset_path, 'og_train.txt')
-val_txt_path = os.path.join(txt_dataset_path, 'og_val.txt')
-txt_newfolder_path = os.path.join(txt_dataset_path, 'combined_train_val_txt')
+# txt_dataset_path = './splits_txt/'
+# train_txt_path = os.path.join(txt_dataset_path, 'og_train.txt')
+# val_txt_path = os.path.join(txt_dataset_path, 'og_val.txt')
+# txt_newfolder_path = os.path.join(txt_dataset_path, 'combined_train_val_txt')
 
 ##### Creates a new directory with the given files copied in there #####
 # Create the new folder if it doesn't exist
@@ -92,26 +93,26 @@ copy_files_recursively(val_path, new_folder_path)
 print("Total number of folders immediately in the combined folder:", count_folders(new_folder_path))
 
 
-##### Creates a new directory with the given files copied in there for txt folder #####
-merged_txt_path = os.path.join(txt_newfolder_path, 'combined_train_val.txt')
-# Merge the contents of train.txt and val.txt into a new file
-with open(merged_txt_path, 'w') as outfile:
-    # First, read and write the contents of train.txt
-    with open(train_txt_path, 'r') as infile:
-        outfile.write(infile.read())
-        outfile.write("\n")  # Optionally add a newline between the contents of the files
+# ##### Creates a new directory with the given files copied in there for txt folder #####
+# merged_txt_path = os.path.join(txt_newfolder_path, 'combined_train_val.txt')
+# # Merge the contents of train.txt and val.txt into a new file
+# with open(merged_txt_path, 'w') as outfile:
+#     # First, read and write the contents of train.txt
+#     with open(train_txt_path, 'r') as infile:
+#         outfile.write(infile.read())
+#         outfile.write("\n")  # Optionally add a newline between the contents of the files
 
-    # Next, read and write the contents of val.txt
-    with open(val_txt_path, 'r') as infile:
-        outfile.write(infile.read())
+#     # Next, read and write the contents of val.txt
+#     with open(val_txt_path, 'r') as infile:
+#         outfile.write(infile.read())
 
-# Confirm the merge
-print(f"The files train.txt and val.txt have been merged into {merged_txt_path}")
+# # Confirm the merge
+# print(f"The files train.txt and val.txt have been merged into {merged_txt_path}")
 
-# Count the number of rows in the merged file
-with open(merged_txt_path, 'r') as file:
-    row_count = sum(1 for row in file)
-print(f"The merged file contains {row_count} rows.")
+# # Count the number of rows in the merged file
+# with open(merged_txt_path, 'r') as file:
+#     row_count = sum(1 for row in file)
+# print(f"The merged file contains {row_count} rows.")
 
 
 
