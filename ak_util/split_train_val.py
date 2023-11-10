@@ -72,8 +72,8 @@ def verify_video_ids_in_file(video_id_list, file_path):
 
 # Define the source directories and the target directory
 dataset_path = './dataset/'
-train_path = os.path.join(dataset_path, 'train_og/')
-val_path = os.path.join(dataset_path, 'val_og/')
+train_path = os.path.join(dataset_path, 'train/')
+val_path = os.path.join(dataset_path, 'val/')
 new_folder_path =  './combined_train_val'
 # new_folder_path = os.path.join(dataset_path, 'combined_train_val')
 
