@@ -90,12 +90,12 @@ class DataGenerator(IterableDataset):
         Returns:
             1 channel image
         """
-        if self.image_caching and (filename in self.stored_images):
-            return self.stored_images[filename]
         id += 1
         image_number = str(id)
         image_number = "0" * (6 - len(image_number)) + image_number
         filename = filename + f"/img1/{image_number}.jpg"
+        if self.image_caching and (filename in self.stored_images):
+            return self.stored_images[filename]
         image = imageio.imread(filename)  # misc.imread(filename)
         image = image.reshape([dim_input])
         image = image.astype(np.float32) / image.max()
