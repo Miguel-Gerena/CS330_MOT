@@ -64,15 +64,10 @@ class DataGenerator(IterableDataset):
             cache: whether to cache the images loaded
         """
         # This order can be shuffled to create new tasks
-        
+        self.sports_order = {"Basketball":0,"Football":1,"Volleyball":2}
         self.frames_per_video = frames_per_video
         self.number_of_sports = number_of_sports
-        self.sports_order = {"Basketball":0,"Football":1,"Volleyball":2}
         self.config = ConfigParser()
-
-
-
-
         self.data_folder = config.get("data_folder", f"./data/combined_train_val/")
         self.img_size = config.get("img_size", (1280, 720, 3))
 
