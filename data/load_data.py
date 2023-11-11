@@ -19,7 +19,6 @@ def convert_ground_truth_to_npy(batch_type, config={}):
     for key, value in videoID_by_sport.items():
         for video in value:
             with open(data_folder + video +"/gt/gt.txt", "r") as f:
-                # file = f.read()
                 line = next(f)
                 data = np.fromstring(line[:-1], sep=",").reshape(1,9)
                 for line in f:
@@ -98,7 +97,7 @@ class DataGenerator(IterableDataset):
         self.image_caching = cache
         self.generate_new_tasks = generate_new_tasks
         self.stored_images = {}
-        self.max_number_players_on_screen = 21  #football ['v_2QhNRucNC7E_c017']
+        self.max_number_players_on_screen = 23  #Football v_i2_L4qquVg0_c006
         self.rows_of_data_in_gt = 6
 
         # to track what was the last frame that was sampled for each sport
