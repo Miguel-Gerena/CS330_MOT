@@ -8,6 +8,9 @@ import imageio
 import json
 from collections import defaultdict
 import shutil
+from configparser import ConfigParser
+
+
 
 def move_datasets(data_set):
     with open(f"{data_set}_counts_by_sport.json", 'r') as f:
@@ -64,6 +67,11 @@ class DataGenerator(IterableDataset):
         
         self.frames_per_video = frames_per_video
         self.number_of_sports = number_of_sports
+        self.sports_order = {"Basketball":0,"Football":1,"Volleyball":2}
+        self.config = ConfigParser()
+
+
+
 
         self.data_folder = config.get("data_folder", f"./data/combined_train_val/")
         self.img_size = config.get("img_size", (1280, 720, 3))
@@ -82,7 +90,7 @@ class DataGenerator(IterableDataset):
         self.last_sample = defaultdict(int)
 
 
-    def image_file_to_array(self, filename, id, dim_input):
+    def image_file_to_array(self, filename, id, dim_input, sport, video_id):
         """
         Takes an image path and returns numpy array
         Args:
@@ -92,7 +100,14 @@ class DataGenerator(IterableDataset):
         Returns:
             1 channel image
         """
+        new_id = video_id
         id += 1
+        self.config.read(f'{filename}/seqinfo.ini')
+        last_frame = int(self.config.get('Sequence', 'seqLength'))
+        if last_frame < id:
+            while video_id == new_id:
+                new_id = random.sample(self.videoID_by_sport[sport], 1)[0]
+            id = 1
         image_number = str(id)
         image_number = "0" * (6 - len(image_number)) + image_number
         filename = filename + f"/img1/{image_number}.jpg"
@@ -104,7 +119,7 @@ class DataGenerator(IterableDataset):
         image = 1.0 - image
         if self.image_caching:
             self.stored_images[filename] = image
-        return image, id
+        return image, id, new_id
 
     def _sample(self):
         """
@@ -131,8 +146,8 @@ class DataGenerator(IterableDataset):
             for i in range(len(video_id)):
                 for k in range(self.frames_per_video):
 
-                        images[k % self.frames_per_video][i][self.sports_order[key]], self.last_sample[key] = \
-                            self.image_file_to_array(self.data_folder + video_id[i], self.last_sample[key], self.dim_input)
+                        images[k % self.frames_per_video][i][self.sports_order[key]], self.last_sample[video_id[i]], samples[key][i] = \
+                            self.image_file_to_array(self.data_folder + video_id[i], self.last_sample[video_id[i]], self.dim_input, key, samples[key][i])
                         labels[k % self.frames_per_video][i][self.sports_order[key]] = np.eye(self.number_of_sports)[self.sports_order[key]] 
         
         # Step 4: Shuffle the order of examples from the query set
