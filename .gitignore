@@ -4,4 +4,5 @@
 *.csv
 *.npy
 *.ini
-*.txt
+# *.txt
+sportsmot_publish/*
