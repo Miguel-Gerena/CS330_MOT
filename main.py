@@ -1,6 +1,6 @@
-sys.path.append('./')
-sys.path.append('..')
-sys.path.append('./ak_util/')
+# sys.path.append('./')
+# sys.path.append('..')
+# sys.path.append('./ak_util/')
 from data import DataGenerator  
 
 
@@ -12,6 +12,7 @@ import json
 import numpy as np
 import torch
 import torch.multiprocessing
+import multiprocessing
 torch.multiprocessing.set_sharing_strategy('file_system')
 from torch.utils.data import DataLoader, BatchSampler, RandomSampler
 from torch import nn
@@ -460,15 +461,16 @@ def main(args):
 
     print("Using device: ", DEVICE)
     random.seed(0)
-    strategy_function = getattr(load_by_sport, args.frame_selection_strategy, None)
-    if strategy_function is None:
-        raise ValueError(f"Invalid frame selection strategy: {args.frame_selection_strategy}")
+    # strategy_function = getattr(load_by_sport, args.frame_selection_strategy, None)
+    # if strategy_function is None:
+    #     raise ValueError(f"Invalid frame selection strategy: {args.frame_selection_strategy}")
     
     meta_train_iterable = DataGenerator(
-    args.num_support_videos,
+    args.num_videos,
     args.num_support + args.num_query,
     batch_type="train",
-    cache=True
+    cache=False,
+    generate_new_tasks=True
 )
     meta_train_loader = iter(
         torch.utils.data.DataLoader(
@@ -478,6 +480,9 @@ def main(args):
             pin_memory=True,
         )
     )
+
+    # for i in range(2):
+    #     images, labels, random_order = next(meta_train_loader)
 
 
     # log_dir = args.log_dir
@@ -567,15 +572,15 @@ if __name__ == '__main__':
                         help='model to run')
     parser.add_argument('--frame_selection_strategy', type=str, default="consecutive_frame_selection",
                         help='The function in load_by_sport file that we want to use for splitting the support/query sets. EX: consecutive vs random')
-    parser.add_argument('--num_support_videos', type=int, default=2,
+    parser.add_argument('--num_videos', type=int, default=1,
                         help='number of videos to include in the support set')
     parser.add_argument('--num_query_videos', type=int, default=2,
                         help='number of videos to include in the query set')
     parser.add_argument('--num_way', type=int, default=5,
                         help='number of classes in a task')
-    parser.add_argument('--num_support', type=int, default=5,
+    parser.add_argument('--num_support', type=int, default=2,
                         help='number of support examples per class in a task')
-    parser.add_argument('--num_query', type=int, default=15,
+    parser.add_argument('--num_query', type=int, default=1,
                         help='number of query examples per class in a task')
     parser.add_argument('--num_tasks_per_batch', type=int, default=3,
                         help='number of inner-loop updates')
@@ -587,13 +592,13 @@ if __name__ == '__main__':
                         help='whether to optimize inner-loop learning rates')
     parser.add_argument('--outer_lr', type=float, default=0.001,
                         help='outer-loop learning rate')
-    parser.add_argument('--batch_size', type=int, default=2,
+    parser.add_argument('--meta_batch_size', type=int, default=2,
                         help='number of tasks per outer-loop update')
     parser.add_argument('--num_train_iterations', type=int, default=15000,
                         help='number of outer-loop updates to train for')
     parser.add_argument('--test', default=False, action='store_true',
                         help='train or test')
-    parser.add_argument('--num_workers', type=int, default=2, 
+    parser.add_argument('--num_workers', type=int, default=int(multiprocessing.cpu_count()/2), 
                         help=('needed to specify dataloader'))
     parser.add_argument('--checkpoint_step', type=int, default=-1,
                         help=('checkpoint iteration to load for resuming '

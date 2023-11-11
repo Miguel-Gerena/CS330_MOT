@@ -48,6 +48,7 @@ class DataGenerator(IterableDataset):
         number_of_sports=3,
         config={},
         cache=False,
+        generate_new_tasks=False
     ):
         """
         Args:
@@ -60,7 +61,7 @@ class DataGenerator(IterableDataset):
             cache: whether to cache the images loaded
         """
         # This order can be shuffled to create new tasks
-        self.sports_order = {"Basketball":0,"Football":1,"Volleyball":2}
+        
         self.frames_per_video = frames_per_video
         self.number_of_sports = number_of_sports
 
@@ -74,6 +75,7 @@ class DataGenerator(IterableDataset):
         self.dim_output = frames_per_video
         self.num_videos = num_videos 
         self.image_caching = cache
+        self.generate_new_tasks = generate_new_tasks
         self.stored_images = {}
 
         # to track what was the last frame that was sampled for each sport
@@ -113,6 +115,10 @@ class DataGenerator(IterableDataset):
                 2. label batch has shape [K+1, num_videos, num_sports, num_sports] and is a numpy array
             where K is the number of "shots", N is number of classes
         """
+        if self.generate_new_tasks:
+            randomize = np.array(["Basketball", "Football","Volleyball"])
+            np.random.shuffle(randomize)
+            self.sports_order = {randomize[i]:i  for i in range(len(randomize))}
 
         samples = defaultdict(list)
         for key, value in self.videoID_by_sport.items():
@@ -135,7 +141,7 @@ class DataGenerator(IterableDataset):
         # images[-1] = images[-1][randomize]
         # labels[-1] = labels[-1][randomize]
 
-        return (images, labels)
+        return (images, labels, self.sports_order)
 
 
     def __iter__(self):
