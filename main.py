@@ -481,8 +481,8 @@ def main(args):
         )
     )
 
-    # for i in range(2):
-    #     images, labels, random_order = next(meta_train_loader)
+    for i in range(2):
+        images, labels, random_order = next(meta_train_loader)
 
 
     # log_dir = args.log_dir

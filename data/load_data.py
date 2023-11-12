@@ -141,7 +141,8 @@ class DataGenerator(IterableDataset):
         Returns:
             A tuple of (1) Image batch and (2) Label batch:
                 1. image batch has shape [K+num_query, num_videos, num_sports, rgb_image_size] and is a numpy array
-                2. label batch has shape [K+num_query, num_videos, num_sports, max_number_players_on_screen, 6] and is a numpy array
+                2. label batch has shape [K+num_query, num_videos, num_sports, max_number_players_on_screen, ground_truth] and is a numpy array
+                3. sports_order for the task
             where K is the number of "shots"
 
             Note:
