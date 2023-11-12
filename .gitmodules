@@ -1,0 +1,9 @@
+[submodule "sub1"]
+	path = sub1
+	url = https://github.com/MCG-NJU/SportsMOT.git
+[submodule "SportsMOT"]
+	path = SportsMOT
+	url = https://github.com/MCG-NJU/SportsMOT.git
+[submodule "YOLOX"]
+	path = YOLOX
+	url = https://github.com/Megvii-BaseDetection/YOLOX.git
