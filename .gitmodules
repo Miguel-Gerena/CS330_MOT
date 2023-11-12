@@ -1,6 +1,3 @@
-[submodule "sub1"]
-	path = sub1
-	url = https://github.com/MCG-NJU/SportsMOT.git
 [submodule "SportsMOT"]
 	path = SportsMOT
 	url = https://github.com/MCG-NJU/SportsMOT.git
