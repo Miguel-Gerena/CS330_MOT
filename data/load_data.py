@@ -75,7 +75,8 @@ class DataGenerator(IterableDataset):
         number_of_sports:int=3,
         config:dict={},
         cache:bool=False,
-        generate_new_tasks:bool=False
+        generate_new_tasks:bool=False,
+        normalize_output:bool=True
     ):
         """
         Args:
@@ -106,6 +107,7 @@ class DataGenerator(IterableDataset):
         self.stored_images = {}
         self.max_number_players_on_screen = 23  #Football v_i2_L4qquVg0_c006
         self.rows_of_data_in_gt = 6
+        self.normalize_output = normalize_output
 
         # to track what was the last frame that was sampled for each sport
         self.last_sample = defaultdict(int)
@@ -168,7 +170,8 @@ class DataGenerator(IterableDataset):
         for key, video_id in samples.items():
             for i in range(len(video_id)):
                 ground_truth = np.loadtxt(self.data_folder + video_id[i] +"/gt/gt.txt", delimiter=",", dtype=np.int32, usecols=(0,1,2,3,4,5))
-                normalized = normalize(ground_truth)
+                if self.normalize_output:
+                    ground_truth = normalize(ground_truth)
                 for k in range(self.frames_per_video):
                         frame_id = k + 1
                         images[k % self.frames_per_video][i][self.sports_order[key]], self.last_sample[video_id[i]], samples[key][i] = \
@@ -188,6 +191,3 @@ class DataGenerator(IterableDataset):
     def __iter__(self):
         while True:
             yield self._sample()
-
-a = DataGenerator(1,3,"train")
-a._sample()
