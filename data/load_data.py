@@ -57,6 +57,13 @@ def get_jsons_by_sport(count_folder= "./data/combined_counts/", files=["test_cou
 
         with open(f'{count_folder}{file.split(".")[0]}_by_sport.json', 'w') as file:
             json.dump(dataset, file, indent=2)
+    
+    
+def normalize(ground_truth:np.array) -> np.array:
+    max_values = ground_truth.max(axis=0)
+    max_values[0] = 1
+    max_values[1] = 1
+    return ground_truth/max_values
 
 
 class DataGenerator(IterableDataset):
@@ -161,12 +168,13 @@ class DataGenerator(IterableDataset):
         for key, video_id in samples.items():
             for i in range(len(video_id)):
                 ground_truth = np.loadtxt(self.data_folder + video_id[i] +"/gt/gt.txt", delimiter=",", dtype=np.int32, usecols=(0,1,2,3,4,5))
+                normalized = normalize(ground_truth)
                 for k in range(self.frames_per_video):
                         frame_id = k + 1
                         images[k % self.frames_per_video][i][self.sports_order[key]], self.last_sample[video_id[i]], samples[key][i] = \
                             self.image_file_to_array(self.data_folder + video_id[i], self.last_sample[video_id[i]], self.dim_input, key, samples[key][i])
-                        label_data = ground_truth[ground_truth[:,0] == frame_id] 
-                        labels[k % self.frames_per_video][i][self.sports_order[key]][:label_data.shape[0]] = ground_truth[ground_truth[:,0] == frame_id]  # k starts at 0 and frames start at 1
+                        label_data = normalized[normalized[:,0] == frame_id] 
+                        labels[k % self.frames_per_video][i][self.sports_order[key]][:label_data.shape[0]] = normalized[normalized[:,0] == frame_id]  # k starts at 0 and frames start at 1
         
         # Step 4: Shuffle the order of examples from the query set
         # randomize = np.arange(self.num_classes)
@@ -180,3 +188,6 @@ class DataGenerator(IterableDataset):
     def __iter__(self):
         while True:
             yield self._sample()
+
+a = DataGenerator(1,3,"train")
+a._sample()
