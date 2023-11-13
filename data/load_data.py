@@ -176,8 +176,8 @@ class DataGenerator(IterableDataset):
                         frame_id = k + 1
                         images[k % self.frames_per_video][i][self.sports_order[key]], self.last_sample[video_id[i]], samples[key][i] = \
                             self.image_file_to_array(self.data_folder + video_id[i], self.last_sample[video_id[i]], self.dim_input, key, samples[key][i])
-                        label_data = normalized[normalized[:,0] == frame_id] 
-                        labels[k % self.frames_per_video][i][self.sports_order[key]][:label_data.shape[0]] = normalized[normalized[:,0] == frame_id]  # k starts at 0 and frames start at 1
+                        label_data = ground_truth[ground_truth[:,0] == frame_id] 
+                        labels[k % self.frames_per_video][i][self.sports_order[key]][:label_data.shape[0]] = ground_truth[ground_truth[:,0] == frame_id]  # k starts at 0 and frames start at 1
         
         # Step 4: Shuffle the order of examples from the query set
         # randomize = np.arange(self.num_classes)
