@@ -710,7 +710,7 @@ if __name__ == '__main__':
     parser.add_argument('--model', type=str, default='maml', help='model to run')
     parser.add_argument('--num_videos', type=int, default=1, help='number of videos to include in the support set')
     parser.add_argument('--num_way', type=int, default=23, help='number of classes in a task')
-    parser.add_argument('--num_support', type=int, default=8, help='number of support examples per class in a task')
+    parser.add_argument('--num_support', type=int, default=3, help='number of support examples per class in a task')
     parser.add_argument('--num_query', type=int, default=1, help='number of query examples per class in a task')
     parser.add_argument('--meta_batch_size', type=int, default=2, help='number of tasks per outer-loop update')
     parser.add_argument('--meta_train_iterations', type=int, default=200, help='number of baches of tasks to iterate through for train')
