@@ -20,108 +20,64 @@ from motmetrics.metrics import motp, motp
 from collections import OrderedDict
 
 NUM_INPUT_CHANNELS = 1
-NUM_HIDDEN_CHANNELS = 10 # usually 32
+NUM_HIDDEN_CHANNELS = args.num_hidden_dim # usually 32
 KERNEL_SIZE = 3
-NUM_CONV_LAYERS = 2     #usually 4
+NUM_CONV_LAYERS = args.num_conv_layers     #usually 4
 SUMMARY_INTERVAL = 10
 SAVE_INTERVAL = 100
 LOG_INTERVAL = 10
 VAL_INTERVAL = LOG_INTERVAL * 5
 NUM_TEST_TASKS = 600
+NUM_CLASSES_FRAME_ID = 23  # Number of classes for frame ID
+NUM_CLASSES_PLAYER_ID = 23  # Number of classes for player ID
 
 class MAML:
-    """Trains and assesses a MAML."""
-
-    def __init__(
-            self,
-            num_outputs,
-            num_inner_steps,
-            inner_lr,
-            learn_inner_lrs,
-            outer_lr,
-            log_dir,
-            device
-    ):
-        """Inits MAML.
-
-        The network consists of four convolutional blocks followed by a linear
-        head layer. Each convolutional block comprises a convolution layer, a
-        batch normalization layer, and ReLU activation.
-
-        Note that unlike conventional use, batch normalization is always done
-        with batch statistics, regardless of whether we are training or
-        evaluating. This technically makes meta-learning transductive, as
-        opposed to inductive.
-
-        Args:
-            num_outputs (int): dimensionality of output, i.e. number of classes
-                in a task
-            num_inner_steps (int): number of inner-loop optimization steps
-            inner_lr (float): learning rate for inner-loop optimization
-                If learn_inner_lrs=True, inner_lr serves as the initialization
-                of the learning rates.
-            learn_inner_lrs (bool): whether to learn the above
-            outer_lr (float): learning rate for outer-loop optimization
-            log_dir (str): path to logging directory
-            device (str): device to be used
-        """
+    def __init__(self, num_outputs, num_inner_steps, inner_lr, learn_inner_lrs, outer_lr, log_dir, device):
         meta_parameters = {}
 
         self.device = device
 
-        # construct feature extractor
+        # Construct feature extractor
         in_channels = NUM_INPUT_CHANNELS
         for i in range(NUM_CONV_LAYERS):
             meta_parameters[f'conv{i}'] = nn.init.xavier_uniform_(
-                torch.empty(
-                    NUM_HIDDEN_CHANNELS,
-                    in_channels,
-                    KERNEL_SIZE,
-                    KERNEL_SIZE,
-                    requires_grad=True,
-                    device=self.device
-                )
+                torch.empty(NUM_HIDDEN_CHANNELS, in_channels, KERNEL_SIZE, KERNEL_SIZE, requires_grad=True, device=self.device)
             )
             meta_parameters[f'b{i}'] = nn.init.zeros_(
-                torch.empty(
-                    NUM_HIDDEN_CHANNELS,
-                    requires_grad=True,
-                    device=self.device
-                )
+                torch.empty(NUM_HIDDEN_CHANNELS, requires_grad=True, device=self.device)
             )
             in_channels = NUM_HIDDEN_CHANNELS
 
-        # construct linear head layer
-        # 6 because of the 6 outputs
-        for output_component in range(6):
-            meta_parameters[f'w{NUM_CONV_LAYERS}_{output_component}'] = nn.init.xavier_uniform_(
-                torch.empty(
-                    num_outputs,
-                    NUM_HIDDEN_CHANNELS,
-                    requires_grad=True,
-                    device=self.device
-                )
-            )
-            meta_parameters[f'b{NUM_CONV_LAYERS}_{output_component}'] = nn.init.zeros_(
-                torch.empty(
-                    num_outputs,
-                    requires_grad=True,
-                    device=self.device
-                )
-            )
+        # Construct linear head layer for frame ID and player ID
+        # meta_parameters['w_frame_id'] = nn.init.xavier_uniform_(
+        #     torch.empty(NUM_CLASSES_FRAME_ID, NUM_HIDDEN_CHANNELS, requires_grad=True, device=self.device)
+        # )
+        # meta_parameters['b_frame_id'] = nn.init.zeros_(
+        #     torch.empty(NUM_CLASSES_FRAME_ID, requires_grad=True, device=self.device)
+        # )
+        meta_parameters['w_player_id'] = nn.init.xavier_uniform_(
+            torch.empty(NUM_CLASSES_PLAYER_ID, NUM_HIDDEN_CHANNELS, requires_grad=True, device=self.device)
+        )
+        meta_parameters['b_player_id'] = nn.init.zeros_(
+            torch.empty(NUM_CLASSES_PLAYER_ID, requires_grad=True, device=self.device)
+        )
 
+        # Construct linear layers for bbox components
+        for bbox_component in ['left', 'top', 'width', 'height']:
+            meta_parameters[f'w_bbox_{bbox_component}'] = nn.init.xavier_uniform_(
+                torch.empty(NUM_CLASSES_PLAYER_ID, NUM_HIDDEN_CHANNELS, requires_grad=True, device=self.device)
+            )
+            meta_parameters[f'b_bbox_{bbox_component}'] = nn.init.zeros_(
+                torch.empty(NUM_CLASSES_PLAYER_ID, requires_grad=True, device=self.device)
+            )
 
         self._meta_parameters = meta_parameters
         self._num_inner_steps = num_inner_steps
-        self._inner_lrs = {
-            k: torch.tensor(inner_lr, requires_grad=learn_inner_lrs)
-            for k in self._meta_parameters.keys()
-        }
+        self._inner_lrs = {k: torch.tensor(inner_lr, requires_grad=learn_inner_lrs) for k in self._meta_parameters.keys()}
         self._outer_lr = outer_lr
 
         self._optimizer = torch.optim.Adam(
-            list(self._meta_parameters.values()) +
-            list(self._inner_lrs.values()),
+            list(self._meta_parameters.values()) + list(self._inner_lrs.values()),
             lr=self._outer_lr
         )
         self._log_dir = log_dir
@@ -130,65 +86,31 @@ class MAML:
         self._start_train_step = 0
 
     def _forward(self, images, parameters):
-        """Computes predicted outputs for frame id, player id, bb_left, bb_top, bb_width, and bb_height.
-
-        Args:
-            images (Tensor): batch of images
-                shape (num_images, channels, height, width)
-            parameters (dict[str, Tensor]): parameters to use for the computation
-
-        Returns:
-            a tuple of Tensors consisting of batches of logits for each component
-            shape (batch_size, num_videos, num_sports, num_players, num_components)
-        """
         x = images
         for i in range(NUM_CONV_LAYERS):
-            x = F.conv2d(
-                input=x,
-                weight=parameters[f'conv{i}'],
-                bias=parameters[f'b{i}'],
-                stride=1,
-                padding="same"
-            )
+            x = F.conv2d(input=x, weight=parameters[f'conv{i}'], bias=parameters[f'b{i}'], stride=1, padding="same")
             x = F.batch_norm(x, None, None, training=True)
             x = F.relu(x)
-        x = torch.mean(x, dim=[-1, -2])
+        x = torch.mean(x, dim=[-1, -2])  # Global average pooling
 
-        # Initialize lists to store the outputs for each component
-        outputs = []
+        # Frame ID logits (assuming a classification task for frame ID)
+        # frame_id_logits = F.linear(input=x, weight=parameters['w_frame_id'], bias=parameters['b_frame_id'])
 
-        # Iterate through each output component (frame id, player id, bb_left, bb_top, bb_width, bb_height)
-        for component in range(6):
-            # Compute the output for the current component
-            component_output = F.linear(input=x, weight=parameters[f'w{NUM_CONV_LAYERS}_{component}'], bias=parameters[f'b{NUM_CONV_LAYERS}_{component}'])
-            
-            # Reshape the output to match the shape of the labels
-            component_output = component_output.view(images.shape[0], -1, component_output.shape[-1]).squeeze(dim=1)
+        # Player ID logits - now just indexes within a frame, not unique IDs
+        player_id_logits = F.linear(input=x, weight=parameters['w_player_id'], bias=parameters['b_player_id'])
+        player_id_logits = player_id_logits.view(-1, NUM_CLASSES_PLAYER_ID)  # Shape: [batch_size, max_players]
 
-            outputs.append(component_output)
+        # Bbox components for each potential player
+        bb_left = F.linear(input=x, weight=parameters['w_bbox_left'], bias=parameters['b_bbox_left'])
+        bb_top = F.linear(input=x, weight=parameters['w_bbox_top'], bias=parameters['b_bbox_top'])
+        bb_width = F.linear(input=x, weight=parameters['w_bbox_width'], bias=parameters['b_bbox_width'])
+        bb_height = F.linear(input=x, weight=parameters['w_bbox_height'], bias=parameters['b_bbox_height'])
 
-        # Return the tuple of outputs for all components
-        return tuple(outputs)
 
+        return player_id_logits, bb_left, bb_top, bb_width, bb_height
 
     def _inner_loop(self, images, labels, train):
-        """Computes the adapted network parameters via the MAML inner loop.
 
-        Args:
-            images (Tensor): task support set inputs
-                shape (num_images, channels, height, width)
-            labels (Tensor): task support set outputs
-                shape (num_images,)
-            train (bool): whether we are training or evaluating
-
-        Returns:
-            parameters (dict[str, Tensor]): adapted network parameters
-            accuracies (list[float]): support set accuracy over the course of
-                the inner loop, length num_inner_steps + 1
-            gradients(list[float]): gradients computed from auto.grad, just needed
-                for autograders, no need to use this value in your code and feel to replace
-                with underscore       
-        """
         accuracies = []
         accuracy_dict = {}
         parameters = {
@@ -200,10 +122,9 @@ class MAML:
         
         for step in range(num_inner_steps):
             outputs = self._forward(images, parameters)
-            frame_id_logits, player_id_logits, bb_left_logits, bb_top_logits, bb_width_logits, bb_height_logits = outputs
+            player_id_logits, bb_left_logits, bb_top_logits, bb_width_logits, bb_height_logits = outputs
 
             # print("Logits:")
-            # print(f"frame id {frame_id_logits.shape}")
             # print(f"player id {player_id_logits.shape}")
             # print(f"bb left {bb_left_logits.shape}")
             # print(f"bb top {bb_top_logits.shape}")
@@ -211,7 +132,7 @@ class MAML:
             # print(f"bb height {bb_height_logits.shape}")
         
             # print("labels:", labels.shape)
-            # labels = labels[:, 0, 0, :]
+            labels = labels[:, 0, 0, :]
 
 
             frame_id_labels = labels[..., 0]
@@ -224,7 +145,6 @@ class MAML:
 
 
             # print("labels:")
-            # print(f"frame id {frame_id_labels.shape}")
             # print(f"player id {player_id_labels.shape}")
             # print(f"bb left {bb_left_labels.shape}")
             # print(f"bb top {bb_top_labels.shape}")
@@ -232,23 +152,28 @@ class MAML:
             # print(f"bb height {bb_height_labels.shape}")
 
 
-            frame_id_loss = F.cross_entropy(frame_id_logits.squeeze(0), frame_id_labels.squeeze(0))
-            player_id_loss = F.cross_entropy(player_id_logits.squeeze(0), player_id_labels.squeeze(0))
-            bb_left_loss = F.mse_loss(bb_left_logits.squeeze(0), bb_left_labels.squeeze(0))
-            bb_top_loss = F.mse_loss(bb_top_logits.squeeze(0), bb_top_labels.squeeze(0))
-            bb_width_loss = F.mse_loss(bb_width_logits.squeeze(0), bb_width_labels.squeeze(0))
-            bb_height_loss = F.mse_loss(bb_height_logits.squeeze(0), bb_height_labels.squeeze(0))
+            # Calculate losses for each component
+            # frame_id_loss = F.cross_entropy(frame_id_logits, frame_id_labels)
+            player_id_loss = F.cross_entropy(player_id_logits, player_id_labels, ignore_index=-1)
+            bb_left_loss = F.mse_loss(bb_left_logits, bb_left_labels)
+            bb_top_loss = F.mse_loss(bb_top_logits, bb_top_labels)
+            bb_width_loss = F.mse_loss(bb_width_logits, bb_width_labels)
+            bb_height_loss = F.mse_loss(bb_height_logits, bb_height_labels)
 
-            loss = frame_id_loss + player_id_loss + bb_left_loss + bb_top_loss + bb_width_loss + bb_height_loss
+            loss = (player_id_loss + bb_left_loss + bb_top_loss + bb_width_loss + bb_height_loss)/5
+
+            # weight_bbox = 2.0  # Higher weight for bbox losses
+            # weight_classification = 1.0             
+            # loss = (weight_classification * player_id_loss + weight_bbox * (bb_left_loss + bb_top_loss + bb_width_loss + bb_height_loss)) / (weight_classification + 4 * weight_bbox)
+            print("loss:", loss)
+
+            predicted_bboxes = torch.stack([bb_left_logits, bb_top_logits, bb_width_logits, bb_height_logits], dim=-1)
+            true_bboxes = torch.stack([bb_left_labels, bb_top_labels, bb_width_labels, bb_height_labels], dim=-1)
 
             # Calculate accuracy for each component
             accuracy_dict = {
-            "frame_id": util.calculate_accuracy(frame_id_logits, frame_id_labels),
             "player_id": util.calculate_accuracy(player_id_logits, player_id_labels),
-            "bb_left": util.calculate_accuracy(bb_left_logits, bb_left_labels),
-            "bb_top": util.calculate_accuracy(bb_top_logits, bb_top_labels),
-            "bb_width": util.calculate_accuracy(bb_width_logits, bb_width_labels),
-            "bb_height": util.calculate_accuracy(bb_height_logits, bb_height_labels),
+            "bbox": util.calculate_iou(predicted_bboxes, true_bboxes)
             }
             accuracies.append(accuracy_dict)
             # print(f"Accuracies : {accuracy_dict}")
@@ -264,24 +189,22 @@ class MAML:
                 parameters[key] = parameters[key] - self._inner_lrs[key] * gradients[idx] 
 
         updated_outputs = self._forward(images, parameters)
-        frame_id_logits2, player_id_logits2, bb_left_logits2, bb_top_logits2, bb_width_logits2, bb_height_logits2 = updated_outputs
+        player_id_logits2, bb_left_logits2, bb_top_logits2, bb_width_logits2, bb_height_logits2 = updated_outputs
 
         # print("Logits2:")
-        # print(f"frame id {frame_id_logits2.shape}")
         # print(f"player id {player_id_logits2.shape}")
         # print(f"bb left {bb_left_logits2.shape}")
         # print(f"bb top {bb_top_logits2.shape}")
         # print(f"bb width {bb_width_logits2.shape}")
         # print(f"bb height {bb_height_logits2.shape}")
-        
+
+        predicted_bboxes = torch.stack([bb_left_logits2, bb_top_logits2, bb_width_logits2, bb_height_logits2], dim=-1)
+
+            # Calculate accuracy for each component
         accuracy_dict2 = {
-            "frame_id": util.calculate_accuracy(frame_id_logits, frame_id_labels),
             "player_id": util.calculate_accuracy(player_id_logits, player_id_labels),
-            "bb_left": util.calculate_accuracy(bb_left_logits, bb_left_labels),
-            "bb_top": util.calculate_accuracy(bb_top_logits, bb_top_labels),
-            "bb_width": util.calculate_accuracy(bb_width_logits, bb_width_labels),
-            "bb_height": util.calculate_accuracy(bb_height_logits, bb_height_labels),
-        }
+            "bbox": util.calculate_iou(predicted_bboxes, true_bboxes)
+            }
         accuracies.append(accuracy_dict2)
         # print(f"Accuracies 2: {accuracy_dict2}")
 
@@ -330,8 +253,17 @@ class MAML:
             
             # Initialize lists to store losses and accuracies for each output component
             accuracy_query = []
-            frame_id_logits, player_id_logits, bb_left_logits, bb_top_logits, bb_width_logits, bb_height_logits = logits_query
+            player_id_logits, bb_left_logits, bb_top_logits, bb_width_logits, bb_height_logits = logits_query
 
+            # print("Logits:")
+            # print(f"player id {player_id_logits.shape}")
+            # print(f"bb left {bb_left_logits.shape}")
+            # print(f"bb top {bb_top_logits.shape}")
+            # print(f"bb width {bb_width_logits.shape}")
+            # print(f"bb height {bb_height_logits.shape}")
+
+            # print("labels_query:", labels_query.shape)
+            labels_query = labels_query[:, 0, 0, :]
 
             frame_id_labels = labels_query[..., 0]
             player_id_labels = labels_query[..., 1]
@@ -340,25 +272,32 @@ class MAML:
             bb_width_labels = labels_query[..., 4]
             bb_height_labels = labels_query[..., 5]
 
-            frame_id_loss = F.cross_entropy(frame_id_logits.squeeze(0), frame_id_labels.squeeze(0))
-            player_id_loss = F.cross_entropy(player_id_logits.squeeze(0), player_id_labels.squeeze(0))
-            bb_left_loss = F.mse_loss(bb_left_logits.squeeze(0), bb_left_labels.squeeze(0))
-            bb_top_loss = F.mse_loss(bb_top_logits.squeeze(0), bb_top_labels.squeeze(0))
-            bb_width_loss = F.mse_loss(bb_width_logits.squeeze(0), bb_width_labels.squeeze(0))
-            bb_height_loss = F.mse_loss(bb_height_logits.squeeze(0), bb_height_labels.squeeze(0))
 
-            loss = frame_id_loss + player_id_loss + bb_left_loss + bb_top_loss + bb_width_loss + bb_height_loss
+            # print("labels:")
+            # print(f"player id {player_id_labels.shape}")
+            # print(f"bb left {bb_left_labels.shape}")
+            # print(f"bb top {bb_top_labels.shape}")
+            # print(f"bb width {bb_width_labels.shape}")
+            # print(f"bb height {bb_height_labels.shape}")
 
 
-            # Store individual accuracies for each task
-            accuracy_query.append({
-                "frame_id": util.calculate_accuracy(frame_id_logits, frame_id_labels),
-                "player_id": util.calculate_accuracy(player_id_logits, player_id_labels),
-                "bb_left": util.calculate_accuracy(bb_left_logits, bb_left_labels),
-                "bb_top": util.calculate_accuracy(bb_top_logits, bb_top_labels),
-                "bb_width": util.calculate_accuracy(bb_width_logits, bb_width_labels),
-                "bb_height": util.calculate_accuracy(bb_height_logits, bb_height_labels),
-            })
+            player_id_loss = F.cross_entropy(player_id_logits, player_id_labels)
+            bb_left_loss = F.mse_loss(bb_left_logits, bb_left_labels)
+            bb_top_loss = F.mse_loss(bb_top_logits, bb_top_labels)
+            bb_width_loss = F.mse_loss(bb_width_logits, bb_width_labels)
+            bb_height_loss = F.mse_loss(bb_height_logits, bb_height_labels)
+
+            loss = (player_id_loss + bb_left_loss + bb_top_loss + bb_width_loss + bb_height_loss)/5
+
+
+            predicted_bboxes = torch.stack([bb_left_logits, bb_top_logits, bb_width_logits, bb_height_logits], dim=-1)
+            true_bboxes = torch.stack([bb_left_labels, bb_top_labels, bb_width_labels, bb_height_labels], dim=-1)
+
+            # Calculate accuracy for each component
+            accuracy_query = {
+            "player_id": util.calculate_accuracy(player_id_logits, player_id_labels),
+            "bbox": util.calculate_iou(predicted_bboxes, true_bboxes)
+            }
             # print(f"outer Accuracies : {accuracy_query}")
 
             outer_loss_batch.append(loss)
@@ -371,21 +310,13 @@ class MAML:
 
         # Initialize dictionaries to accumulate accuracy values for each subtask
         accumulated_pre_adapt_accuracies = {
-            "frame_id": [],
             "player_id": [],
-            "bb_left": [],
-            "bb_top": [],
-            "bb_width": [],
-            "bb_height": []
+             "bbox": []
         }
 
         accumulated_post_adapt_accuracies = {
-            "frame_id": [],
             "player_id": [],
-            "bb_left": [],
-            "bb_top": [],
-            "bb_width": [],
-            "bb_height": []
+             "bbox": []
         }
 
         # Iterate through the list of dictionaries and accumulate accuracy values
@@ -411,19 +342,15 @@ class MAML:
 
 
         accumulated_accuracies = {
-            "frame_id": [],
             "player_id": [],
-            "bb_left": [],
-            "bb_top": [],
-            "bb_width": [],
-            "bb_height": []
+             "bbox": []
         }
 
         # Iterate through the list of dictionaries and accumulate accuracy values
         for acc in accuracy_query_batch:
             for key in accumulated_accuracies:
                 # Calculate the mean accuracy for the current subtask key
-                mean_accuracy = np.mean([item[key] for item in acc])
+                mean_accuracy = acc[key]  
                 accumulated_accuracies[key].append(mean_accuracy)
 
         # Convert the accumulated accuracy values to NumPy arrays and calculate the mean accuracy for each subtask
@@ -452,7 +379,7 @@ class MAML:
             if i_step >= args.meta_train_iterations:
                 break
             print(f"Train Iteration: {i_step + 1}/{args.meta_train_iterations}")
-            labels = labels[:, 0, 0, :]
+
             self._optimizer.zero_grad()
             outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query = (
                 self._outer_step(images, labels, train=True)
@@ -460,7 +387,7 @@ class MAML:
             outer_loss.backward()
             self._optimizer.step()
 
-            print(f'Loss: {outer_loss.item():.3f}')
+            print(f' Outer Loss: {outer_loss.item():.3f}')
 
             # Print pre-adaptation accuracies
             # print('Pre-adaptation support accuracies:')
@@ -507,7 +434,7 @@ class MAML:
                         break
                     print(f"Batch {batch_idx + 1}/{args.meta_val_iterations}")
                     val_images, val_labels, _ = val_batch  # Unpack the batch
-                    val_labels = val_labels[:, 0,0, :]
+                    # val_labels = val_labels[:, 0,0, :]
 
                     val_outer_loss, val_pre_adapt_accuracy_mean, val_post_adapt_accuracy_mean, val_accuracy_query = (
                         self._outer_step(val_images, val_labels, train=False)
@@ -691,7 +618,7 @@ def main(args):
 
     log_dir = args.log_dir
     if log_dir is None:
-        log_dir = f'./logs/model_{args.model}/way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.hd_{NUM_HIDDEN_CHANNELS}.cvl_{NUM_CONV_LAYERS}'  # pylint: disable=line-too-long
+        log_dir = f'./logs/model_{args.model}/normalized_way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}.hd_{args.num_hidden_dim}.cvl_{args.num_conv_layers}'  # pylint: disable=line-too-long
     print(f'log_dir: {log_dir}')
     writer = tensorboard.SummaryWriter(log_dir=log_dir)
 
@@ -765,7 +692,7 @@ def main(args):
             )
         )
 
-
+    print("Loaded data")
     if args.model == 'maml':
         maml.train(
             meta_train_loader,
@@ -783,15 +710,17 @@ if __name__ == '__main__':
     parser.add_argument('--model', type=str, default='maml', help='model to run')
     parser.add_argument('--num_videos', type=int, default=1, help='number of videos to include in the support set')
     parser.add_argument('--num_way', type=int, default=23, help='number of classes in a task')
-    parser.add_argument('--num_support', type=int, default=2, help='number of support examples per class in a task')
+    parser.add_argument('--num_support', type=int, default=8, help='number of support examples per class in a task')
     parser.add_argument('--num_query', type=int, default=1, help='number of query examples per class in a task')
     parser.add_argument('--meta_batch_size', type=int, default=2, help='number of tasks per outer-loop update')
-    parser.add_argument('--meta_train_iterations', type=int, default=1000, help='number of baches of tasks to iterate through for train')
+    parser.add_argument('--meta_train_iterations', type=int, default=200, help='number of baches of tasks to iterate through for train')
     parser.add_argument('--meta_val_iterations', type=int, default=50, help='number of baches of tasks to iterate through for val per every check')
     parser.add_argument('--num_inner_steps', type=int, default=1, help='number of inner-loop updates')
     parser.add_argument('--inner_lr', type=float, default=0.4, help='inner-loop learning rate initialization')
     parser.add_argument('--learn_inner_lrs', default=False, action='store_true', help='whether to optimize inner-loop learning rates')
     parser.add_argument('--outer_lr', type=float, default=0.001, help='outer-loop learning rate')
+    parser.add_argument('--num_hidden_dim', type=int, default=10, help='number of hidden channels')
+    parser.add_argument('--num_conv_layers', type=int, default=2, help='number of convolutional layers in base model')
     parser.add_argument('--test', default=False, action='store_true', help='train or test')
     parser.add_argument('--num_workers', type=int, default=int(multiprocessing.cpu_count()/2), help=('needed to specify dataloader'))
     parser.add_argument('--checkpoint_step', type=int, default=-1, help=('checkpoint iteration to load for resuming training, or for evaluation (-1 is ignored)'))
