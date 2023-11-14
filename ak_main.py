@@ -20,9 +20,9 @@ from motmetrics.metrics import motp, motp
 from collections import OrderedDict
 
 NUM_INPUT_CHANNELS = 1
-NUM_HIDDEN_CHANNELS = args.num_hidden_dim # usually 32
+NUM_HIDDEN_CHANNELS = 10 # usually 32
 KERNEL_SIZE = 3
-NUM_CONV_LAYERS = args.num_conv_layers     #usually 4
+NUM_CONV_LAYERS = 2     #usually 4
 SUMMARY_INTERVAL = 10
 SAVE_INTERVAL = 100
 LOG_INTERVAL = 10
@@ -618,7 +618,7 @@ def main(args):
 
     log_dir = args.log_dir
     if log_dir is None:
-        log_dir = f'./logs/model_{args.model}/normalized_way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}.hd_{args.num_hidden_dim}.cvl_{args.num_conv_layers}'  # pylint: disable=line-too-long
+        log_dir = f'./logs/model_{args.model}/normalized_way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}.hd_{NUM_HIDDEN_CHANNELS}.cvl_{NUM_CONV_LAYERS}'  # pylint: disable=line-too-long
     print(f'log_dir: {log_dir}')
     writer = tensorboard.SummaryWriter(log_dir=log_dir)
 
@@ -719,8 +719,6 @@ if __name__ == '__main__':
     parser.add_argument('--inner_lr', type=float, default=0.4, help='inner-loop learning rate initialization')
     parser.add_argument('--learn_inner_lrs', default=False, action='store_true', help='whether to optimize inner-loop learning rates')
     parser.add_argument('--outer_lr', type=float, default=0.001, help='outer-loop learning rate')
-    parser.add_argument('--num_hidden_dim', type=int, default=10, help='number of hidden channels')
-    parser.add_argument('--num_conv_layers', type=int, default=2, help='number of convolutional layers in base model')
     parser.add_argument('--test', default=False, action='store_true', help='train or test')
     parser.add_argument('--num_workers', type=int, default=int(multiprocessing.cpu_count()/2), help=('needed to specify dataloader'))
     parser.add_argument('--checkpoint_step', type=int, default=-1, help=('checkpoint iteration to load for resuming training, or for evaluation (-1 is ignored)'))
