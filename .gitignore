@@ -6,3 +6,5 @@
 *.ini
 # *.txt
 sportsmot_publish/*
+logs/*
+*.png

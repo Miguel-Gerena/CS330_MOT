@@ -18,11 +18,12 @@ from torch import autograd
 from torch.utils import tensorboard
 from motmetrics.metrics import motp, motp
 from collections import OrderedDict
+from tqdm import tqdm
 
 NUM_INPUT_CHANNELS = 1
-NUM_HIDDEN_CHANNELS = 10 # usually 32
+NUM_HIDDEN_CHANNELS = 32 # usually 32
 KERNEL_SIZE = 3
-NUM_CONV_LAYERS = 2     #usually 4
+NUM_CONV_LAYERS = 4     #2 was training about the same as 4
 SUMMARY_INTERVAL = 10
 SAVE_INTERVAL = 100
 LOG_INTERVAL = 10
@@ -132,10 +133,11 @@ class MAML:
             # print(f"bb height {bb_height_logits.shape}")
         
             # print("labels:", labels.shape)
-            labels = labels[:, 0, 0, :]
+            labels = labels[:, 0, 0, :]  # careful with this, since if you change the number of queries it will not work
 
 
-            frame_id_labels = labels[..., 0]
+
+            # frame_id_labels = labels[..., 0]
             player_id_labels = labels[..., 1]
             bb_left_labels = labels[..., 2]
             bb_top_labels = labels[..., 3]
@@ -165,7 +167,7 @@ class MAML:
             # weight_bbox = 2.0  # Higher weight for bbox losses
             # weight_classification = 1.0             
             # loss = (weight_classification * player_id_loss + weight_bbox * (bb_left_loss + bb_top_loss + bb_width_loss + bb_height_loss)) / (weight_classification + 4 * weight_bbox)
-            print("loss:", loss)
+            # print("loss:", loss)
 
             predicted_bboxes = torch.stack([bb_left_logits, bb_top_logits, bb_width_logits, bb_height_logits], dim=-1)
             true_bboxes = torch.stack([bb_left_labels, bb_top_labels, bb_width_labels, bb_height_labels], dim=-1)
@@ -228,7 +230,7 @@ class MAML:
         accuracy_query_batch = []
 
         for task_idx in range(args.meta_batch_size):  # Iterate over tasks in the batch
-            print("task num:", task_idx+1)
+            # print("task num:", task_idx+1)
             images_task = images[task_idx]  # Images for the current task
             labels_task = labels[task_idx]  # Labels for the current task
 
@@ -336,8 +338,8 @@ class MAML:
             key: np.mean(np.array(accumulated_post_adapt_accuracies[key]), axis=0) for key in accumulated_post_adapt_accuracies
         }
 
-        print(f"Pre-adaptation accuracies: {pre_adapt_accuracy_mean}")
-        print(f"Post-adaptation accuracies: {post_adapt_accuracy_mean}")
+        # print(f"Pre-adaptation accuracies: {pre_adapt_accuracy_mean}")
+        # print(f"Post-adaptation accuracies: {post_adapt_accuracy_mean}")
 
 
 
@@ -358,7 +360,7 @@ class MAML:
             key: np.mean(np.array(accumulated_accuracies[key]), axis=0) for key in accumulated_accuracies
         }
 
-        print(f" query accuracies: {accuracy_query_mean}")
+        # print(f" query accuracies: {accuracy_query_mean}")
 
         return outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query_mean
 
@@ -375,19 +377,21 @@ class MAML:
             writer (SummaryWriter): TensorBoard logger
         """
         print(f'Starting training at iteration {self._start_train_step}.')
-        for i_step, (images, labels, sports_order) in enumerate(dataloader_meta_train, start=self._start_train_step):
+        for i_step, (images, labels, sports_order) in tqdm(enumerate(dataloader_meta_train, start=self._start_train_step), total=args.meta_train_iterations):
             if i_step >= args.meta_train_iterations:
                 break
-            print(f"Train Iteration: {i_step + 1}/{args.meta_train_iterations}")
+            # print(f"Train Iteration: {i_step + 1}/{args.meta_train_iterations}")
 
+            # if (i_step + 1) % 2 == 0:
+            self._optimizer.step()
             self._optimizer.zero_grad()
             outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query = (
                 self._outer_step(images, labels, train=True)
             )
+            # outer_loss /= 2
             outer_loss.backward()
-            self._optimizer.step()
 
-            print(f' Outer Loss: {outer_loss.item():.3f}')
+            # print(f' Outer Loss: {outer_loss.item():.3f}')
 
             # Print pre-adaptation accuracies
             # print('Pre-adaptation support accuracies:')
@@ -422,7 +426,7 @@ class MAML:
 
             
             if i_step % VAL_INTERVAL == 0:
-                print("\nIn val interval check")
+                # print("\nIn val interval check")
                 losses = []
                 val_accuracies_pre_adapt_support = {}
                 val_accuracies_post_adapt_support = {}
@@ -432,7 +436,7 @@ class MAML:
                 for batch_idx, val_batch in enumerate(dataloader_meta_val):
                     if batch_idx >= args.meta_val_iterations:
                         break
-                    print(f"Batch {batch_idx + 1}/{args.meta_val_iterations}")
+                    # print(f"Batch {batch_idx + 1}/{args.meta_val_iterations}")
                     val_images, val_labels, _ = val_batch  # Unpack the batch
                     # val_labels = val_labels[:, 0,0, :]
 
@@ -486,10 +490,11 @@ class MAML:
                 for key, value in val_mean_accuracies_post_adapt_query.items():
                     writer.add_scalar(f'val_accuracy/val_post_adapt_query/{key}', value, i_step)
 
-                print("\n\nDONE WITH CHECK")
+                # print("\n\nDONE WITH CHECK")
                 
 
             if i_step % SAVE_INTERVAL == 0:
+                print(torch.cuda.memory_summary())
                 self._save(i_step)
 
 
@@ -589,6 +594,8 @@ class MAML:
             f'{os.path.join(self._log_dir, "state")}{checkpoint_step}.pt'
         )
         print('Saved checkpoint.')
+        torch.cuda.empty_cache() 
+        print('Cleared cuda cache.')   
 
 def get_support_query(images, labels):
     support_frames = images[:,:-args.num_query]
@@ -657,7 +664,7 @@ def main(args):
                 meta_train_iterable,
                 batch_size=args.meta_batch_size,
                 num_workers=args.num_workers,
-                pin_memory=True,
+                # pin_memory=True,
             )
         )
         # for i in range(args.meta_batch_size):
@@ -688,7 +695,7 @@ def main(args):
                 meta_val_iterable,
                 batch_size=args.meta_batch_size,
                 num_workers=args.num_workers,
-                pin_memory=True,
+                # pin_memory=True,
             )
         )
 
@@ -712,7 +719,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_way', type=int, default=23, help='number of classes in a task')
     parser.add_argument('--num_support', type=int, default=3, help='number of support examples per class in a task')
     parser.add_argument('--num_query', type=int, default=1, help='number of query examples per class in a task')
-    parser.add_argument('--meta_batch_size', type=int, default=2, help='number of tasks per outer-loop update')
+    parser.add_argument('--meta_batch_size', type=int, default=16, help='number of tasks per outer-loop update')
     parser.add_argument('--meta_train_iterations', type=int, default=200, help='number of baches of tasks to iterate through for train')
     parser.add_argument('--meta_val_iterations', type=int, default=50, help='number of baches of tasks to iterate through for val per every check')
     parser.add_argument('--num_inner_steps', type=int, default=1, help='number of inner-loop updates')
@@ -720,7 +727,7 @@ if __name__ == '__main__':
     parser.add_argument('--learn_inner_lrs', default=False, action='store_true', help='whether to optimize inner-loop learning rates')
     parser.add_argument('--outer_lr', type=float, default=0.001, help='outer-loop learning rate')
     parser.add_argument('--test', default=False, action='store_true', help='train or test')
-    parser.add_argument('--num_workers', type=int, default=int(multiprocessing.cpu_count()/2), help=('needed to specify dataloader'))
+    parser.add_argument('--num_workers', type=int, default=4, help=('needed to specify dataloader'))
     parser.add_argument('--checkpoint_step', type=int, default=-1, help=('checkpoint iteration to load for resuming training, or for evaluation (-1 is ignored)'))
     parser.add_argument('--cache', action='store_true')
     parser.add_argument('--device', type=str, default='gpu')

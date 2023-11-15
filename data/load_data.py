@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import random
+from sympy import ShapeError
 import torch
 from torch.utils.data import IterableDataset
 import time
@@ -9,6 +10,7 @@ import json
 from collections import defaultdict
 import shutil
 from configparser import ConfigParser
+import cv2
 
 
 def convert_ground_truth_to_npy(batch_type, config={}):
@@ -59,11 +61,7 @@ def get_jsons_by_sport(count_folder= "./data/combined_counts/", files=["test_cou
             json.dump(dataset, file, indent=2)
     
     
-def normalize(ground_truth:np.array) -> np.array:
-    max_values = ground_truth.max(axis=0)
-    max_values[0] = 1
-    max_values[1] = 1
-    return ground_truth/max_values
+
 
 
 class DataGenerator(IterableDataset):
@@ -76,7 +74,10 @@ class DataGenerator(IterableDataset):
         config:dict={},
         cache:bool=False,
         generate_new_tasks:bool=False,
-        normalize_output:bool=True
+        normalize_output:bool=True,
+        grayscale:bool=True,
+        resolution_percent:float=.25,
+        ignore_shape:bool =False
     ):
         """
         Args:
@@ -94,7 +95,16 @@ class DataGenerator(IterableDataset):
         self.number_of_sports = number_of_sports
         self.config = ConfigParser()
         self.data_folder = config.get("data_folder", f"./data/combined_train_val/")
-        self.img_size = config.get("img_size", (1280, 720, 3))
+        if grayscale:
+            self.img_size = config.get("img_size", (int(720*resolution_percent), int(1280*resolution_percent)))
+        else:
+            self.img_size = config.get("img_size", (int(720*resolution_percent), int(1280*resolution_percent), 3))
+        
+        if self.img_size[0] > self.img_size[1] and ignore_shape == False:
+            raise ShapeError(f"Make sure the image shape is correct in the config.  Expected width, height got {self.img_size.shape}.  If the height is expected to be larger than the width, set ignore shape = True")
+
+        self.grayscale = grayscale
+        self.resolution_percent = resolution_percent
 
         with open(f"./data/combined_counts/{batch_type}_counts_by_sport.json", 'r') as f:
             self.videoID_by_sport = json.load(f)
@@ -111,7 +121,18 @@ class DataGenerator(IterableDataset):
 
         # to track what was the last frame that was sampled for each sport
         self.last_sample = defaultdict(int)
+    
+    def normalize(self, ground_truth:np.array) -> np.array:
+        if self.resolution_percent != 1:
+            ground_truth[:, 2] = ground_truth[:, 2]  * self.resolution_percent  # reducing width
+            ground_truth[:, 3] = ground_truth[:, 3]  * self.resolution_percent  # reducing height
 
+        max_values = ground_truth.max(axis=0)
+        max_values[0] = 1
+        max_values[1] = 1
+        max_values[2] = self.img_size[1] 
+        max_values[3] = self.img_size[0]
+        return ground_truth/max_values
 
     def image_file_to_array(self, filename:str, id:int, dim_input:int, sport:str, video_id:str)-> tuple[list,int,str]:
         """
@@ -134,9 +155,19 @@ class DataGenerator(IterableDataset):
         image_number = str(id)
         image_number = "0" * (6 - len(image_number)) + image_number
         filename = filename + f"/img1/{image_number}.jpg"
+
         if self.image_caching and (filename in self.stored_images):
             return self.stored_images[filename]
-        image = imageio.imread(filename)  # misc.imread(filename)
+        
+        image = cv2.imread(filename)  # misc.imread(filename)
+        if self.grayscale:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        if self.resolution_percent != 1:
+            image = cv2.resize(image, (self.img_size[1], self.img_size[0]))
+            
+        if image.shape != self.img_size:
+            raise ShapeError(f"image shape {image.shape} is not the expected shape {self.img_size}, please update DataGenerator config")
+        
         image = image.reshape([dim_input])
         image = image.astype(np.float32) / image.max()
         image = 1.0 - image
@@ -171,7 +202,7 @@ class DataGenerator(IterableDataset):
             for i in range(len(video_id)):
                 ground_truth = np.loadtxt(self.data_folder + video_id[i] +"/gt/gt.txt", delimiter=",", dtype=np.int32, usecols=(0,1,2,3,4,5))
                 if self.normalize_output:
-                    ground_truth = normalize(ground_truth)
+                    ground_truth = self.normalize(ground_truth)
                 for k in range(self.frames_per_video):
                         frame_id = k + 1
                         images[k % self.frames_per_video][i][self.sports_order[key]], self.last_sample[video_id[i]], samples[key][i] = \
@@ -191,3 +222,6 @@ class DataGenerator(IterableDataset):
     def __iter__(self):
         while True:
             yield self._sample()
+
+# a = DataGenerator(1,3,"train")
+# a._sample()
