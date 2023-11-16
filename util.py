@@ -24,15 +24,39 @@ def score(logits, labels):
     y = y.type(torch.float)
     return torch.mean(y).item()
 
+
+
+
 def calculate_accuracy(logits, labels):
+    # Convert logits to probabilities
+    probabilities = torch.softmax(logits, dim=-1)
+    predicted_classes = torch.argsort(probabilities, dim=-1, descending=True)
 
-    # Flatten both logits and labels to (batch_size * num_classes,)
-    logits = logits.reshape(-1)
-    labels = labels.reshape(-1)
+    correct_count = 0
+    total_valid_predictions = 0
 
-    predicted_classes = torch.argmax(logits, dim=-1)
-    accuracy = (predicted_classes == labels).float().mean().item()
+    # Iterate over each frame and sport
+    for i in range(labels.shape[0]):  # Loop over frames
+        for j in range(labels.shape[1]):  # Loop over sports
+            valid_labels = labels[i, j, labels[i, j] != -1]
+
+            # Get the top-N predictions where N is the number of valid labels
+            top_n_predictions = predicted_classes[i, j, :len(valid_labels)]
+
+            # Count correct predictions
+            for prediction in top_n_predictions:
+                if prediction in valid_labels:
+                    correct_count += 1
+
+            total_valid_predictions += len(valid_labels)
+
+    # Calculate accuracy
+    accuracy = correct_count / total_valid_predictions if total_valid_predictions > 0 else 0.0
+
     return accuracy
+
+
+
 
 
 def calculate_iou(predicted_bboxes, true_bboxes):
@@ -40,8 +64,8 @@ def calculate_iou(predicted_bboxes, true_bboxes):
     Calculate the Intersection over Union (IoU) for bounding boxes.
 
     Args:
-    - predicted_bboxes (Tensor): Predicted bounding boxes, shape [batch_size, num_players, 4]
-    - true_bboxes (Tensor): True bounding boxes, shape [batch_size, num_players, 4]
+    - predicted_bboxes (Tensor): Predicted bounding boxes, shape [num_frames, num_players, 4]
+    - true_bboxes (Tensor): True bounding boxes, shape [num_frames, num_players, 4]
 
     Returns:
     - float: Mean IoU over all bounding boxes

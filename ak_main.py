@@ -20,7 +20,7 @@ from motmetrics.metrics import motp, motp
 from collections import OrderedDict
 from tqdm import tqdm
 
-NUM_INPUT_CHANNELS = 1
+NUM_INPUT_CHANNELS = 1 # num batch
 NUM_HIDDEN_CHANNELS = 32 # usually 32
 KERNEL_SIZE = 3
 NUM_CONV_LAYERS = 4     #2 was training about the same as 4
@@ -33,9 +33,12 @@ NUM_CLASSES_FRAME_ID = 23  # Number of classes for frame ID
 NUM_CLASSES_PLAYER_ID = 23  # Number of classes for player ID
 
 class MAML:
-    def __init__(self, num_outputs, num_inner_steps, inner_lr, learn_inner_lrs, outer_lr, log_dir, device):
+    def __init__(self,  num_frames, num_sports, max_classes, num_inner_steps, inner_lr, learn_inner_lrs, outer_lr, log_dir, device):
         meta_parameters = {}
-
+        self.num_frames = num_frames
+        self.num_sports = num_sports
+        self.max_classes = max_classes
+        num_outputs =  num_sports * max_classes
         self.device = device
 
         # Construct feature extractor
@@ -49,27 +52,28 @@ class MAML:
             )
             in_channels = NUM_HIDDEN_CHANNELS
 
-        # Construct linear head layer for frame ID and player ID
+        # Construct linear head layer for frame ID
         # meta_parameters['w_frame_id'] = nn.init.xavier_uniform_(
         #     torch.empty(NUM_CLASSES_FRAME_ID, NUM_HIDDEN_CHANNELS, requires_grad=True, device=self.device)
         # )
         # meta_parameters['b_frame_id'] = nn.init.zeros_(
         #     torch.empty(NUM_CLASSES_FRAME_ID, requires_grad=True, device=self.device)
         # )
+
         meta_parameters['w_player_id'] = nn.init.xavier_uniform_(
-            torch.empty(NUM_CLASSES_PLAYER_ID, NUM_HIDDEN_CHANNELS, requires_grad=True, device=self.device)
+            torch.empty(num_outputs, NUM_HIDDEN_CHANNELS, requires_grad=True, device=self.device)
         )
         meta_parameters['b_player_id'] = nn.init.zeros_(
-            torch.empty(NUM_CLASSES_PLAYER_ID, requires_grad=True, device=self.device)
+            torch.empty(num_outputs,requires_grad=True, device=self.device)
         )
 
         # Construct linear layers for bbox components
         for bbox_component in ['left', 'top', 'width', 'height']:
             meta_parameters[f'w_bbox_{bbox_component}'] = nn.init.xavier_uniform_(
-                torch.empty(NUM_CLASSES_PLAYER_ID, NUM_HIDDEN_CHANNELS, requires_grad=True, device=self.device)
+                torch.empty(num_outputs, NUM_HIDDEN_CHANNELS, requires_grad=True, device=self.device)
             )
             meta_parameters[f'b_bbox_{bbox_component}'] = nn.init.zeros_(
-                torch.empty(NUM_CLASSES_PLAYER_ID, requires_grad=True, device=self.device)
+                torch.empty(num_outputs, requires_grad=True, device=self.device)
             )
 
         self._meta_parameters = meta_parameters
@@ -87,25 +91,33 @@ class MAML:
         self._start_train_step = 0
 
     def _forward(self, images, parameters):
+
         x = images
+        # x = images.squeeze(1)
+        num_frames = x.shape[0]
+        batch_size = x.shape[1]
+
         for i in range(NUM_CONV_LAYERS):
             x = F.conv2d(input=x, weight=parameters[f'conv{i}'], bias=parameters[f'b{i}'], stride=1, padding="same")
             x = F.batch_norm(x, None, None, training=True)
             x = F.relu(x)
         x = torch.mean(x, dim=[-1, -2])  # Global average pooling
 
+
         # Frame ID logits (assuming a classification task for frame ID)
         # frame_id_logits = F.linear(input=x, weight=parameters['w_frame_id'], bias=parameters['b_frame_id'])
 
-        # Player ID logits - now just indexes within a frame, not unique IDs
-        player_id_logits = F.linear(input=x, weight=parameters['w_player_id'], bias=parameters['b_player_id'])
-        player_id_logits = player_id_logits.view(-1, NUM_CLASSES_PLAYER_ID)  # Shape: [batch_size, max_players]
-
-        # Bbox components for each potential player
-        bb_left = F.linear(input=x, weight=parameters['w_bbox_left'], bias=parameters['b_bbox_left'])
-        bb_top = F.linear(input=x, weight=parameters['w_bbox_top'], bias=parameters['b_bbox_top'])
-        bb_width = F.linear(input=x, weight=parameters['w_bbox_width'], bias=parameters['b_bbox_width'])
-        bb_height = F.linear(input=x, weight=parameters['w_bbox_height'], bias=parameters['b_bbox_height'])
+        # Logits
+        # player_id_logits = F.linear(input=x, weight=parameters['w_player_id'], bias=parameters['b_player_id']).view(-1, self.num_sports, self.max_classes)
+        # bb_left = F.linear(input=x, weight=parameters['w_bbox_left'], bias=parameters['b_bbox_left']).view(-1, self.num_sports, self.max_classes)
+        # bb_top = F.linear(input=x, weight=parameters['w_bbox_top'], bias=parameters['b_bbox_top']).view(-1, self.num_sports, self.max_classes)
+        # bb_width = F.linear(input=x, weight=parameters['w_bbox_width'], bias=parameters['b_bbox_width']).view(-1, self.num_sports, self.max_classes)
+        # bb_height = F.linear(input=x, weight=parameters['w_bbox_height'], bias=parameters['b_bbox_height']).view(-1, self.num_sports, self.max_classes)
+        player_id_logits = F.linear(input=x, weight=parameters['w_player_id'], bias=parameters['b_player_id']).view(num_frames, self.num_sports, self.max_classes)
+        bb_left = F.linear(input=x, weight=parameters['w_bbox_left'], bias=parameters['b_bbox_left']).view(num_frames, self.num_sports, self.max_classes)
+        bb_top = F.linear(input=x, weight=parameters['w_bbox_top'], bias=parameters['b_bbox_top']).view(num_frames, self.num_sports, self.max_classes)
+        bb_width = F.linear(input=x, weight=parameters['w_bbox_width'], bias=parameters['b_bbox_width']).view(num_frames, self.num_sports, self.max_classes)
+        bb_height = F.linear(input=x, weight=parameters['w_bbox_height'], bias=parameters['b_bbox_height']).view(num_frames, self.num_sports, self.max_classes)
 
 
         return player_id_logits, bb_left, bb_top, bb_width, bb_height
@@ -122,6 +134,7 @@ class MAML:
         num_inner_steps = self._num_inner_steps
         
         for step in range(num_inner_steps):
+
             outputs = self._forward(images, parameters)
             player_id_logits, bb_left_logits, bb_top_logits, bb_width_logits, bb_height_logits = outputs
 
@@ -131,11 +144,11 @@ class MAML:
             # print(f"bb top {bb_top_logits.shape}")
             # print(f"bb width {bb_width_logits.shape}")
             # print(f"bb height {bb_height_logits.shape}")
+            # exit()
+
         
             # print("labels:", labels.shape)
-            labels = labels[:, 0, 0, :]  # careful with this, since if you change the number of queries it will not work
-
-
+            labels = labels.squeeze(1)
 
             # frame_id_labels = labels[..., 0]
             player_id_labels = labels[..., 1]
@@ -143,8 +156,6 @@ class MAML:
             bb_top_labels = labels[..., 3]
             bb_width_labels = labels[..., 4]
             bb_height_labels = labels[..., 5]
-
-
 
             # print("labels:")
             # print(f"player id {player_id_labels.shape}")
@@ -163,6 +174,7 @@ class MAML:
             bb_height_loss = F.mse_loss(bb_height_logits, bb_height_labels)
 
             loss = (player_id_loss + bb_left_loss + bb_top_loss + bb_width_loss + bb_height_loss)/5
+
 
             # weight_bbox = 2.0  # Higher weight for bbox losses
             # weight_classification = 1.0             
@@ -265,7 +277,7 @@ class MAML:
             # print(f"bb height {bb_height_logits.shape}")
 
             # print("labels_query:", labels_query.shape)
-            labels_query = labels_query[:, 0, 0, :]
+            labels_query = labels_query.squeeze(1)
 
             frame_id_labels = labels_query[..., 0]
             player_id_labels = labels_query[..., 1]
@@ -438,7 +450,6 @@ class MAML:
                         break
                     # print(f"Batch {batch_idx + 1}/{args.meta_val_iterations}")
                     val_images, val_labels, _ = val_batch  # Unpack the batch
-                    # val_labels = val_labels[:, 0,0, :]
 
                     val_outer_loss, val_pre_adapt_accuracy_mean, val_post_adapt_accuracy_mean, val_accuracy_query = (
                         self._outer_step(val_images, val_labels, train=False)
@@ -629,8 +640,11 @@ def main(args):
     print(f'log_dir: {log_dir}')
     writer = tensorboard.SummaryWriter(log_dir=log_dir)
 
+    # 3 represents num sports
     if args.model == 'maml':
         maml = MAML(
+        args.num_support,
+        args.num_sports,
         args.num_way,
         args.num_inner_steps,
         args.inner_lr,
@@ -673,15 +687,6 @@ def main(args):
         #     print_support_query_shapes(support_frames, support_labels, query_frames, query_labels)
 
 
-        # for batch_idx in range(query_labels.shape[0]):
-        #     for channel_idx in range(query_labels.shape[1]):
-        #         for row_idx in range(query_labels.shape[2]):
-        #             for time_idx in range(query_labels.shape[3]):
-        #                 for element_idx in range(query_labels.shape[4]):
-        #                     label_value = query_labels[batch_idx, channel_idx, row_idx, time_idx, element_idx]
-        #                     print(label_value.item())
-
-
 
         meta_val_iterable = DataGenerator(
         args.num_videos,
@@ -717,6 +722,7 @@ if __name__ == '__main__':
     parser.add_argument('--model', type=str, default='maml', help='model to run')
     parser.add_argument('--num_videos', type=int, default=1, help='number of videos to include in the support set')
     parser.add_argument('--num_way', type=int, default=23, help='number of classes in a task')
+    parser.add_argument('--num_sports', type=int, default=3, help='number of sports')
     parser.add_argument('--num_support', type=int, default=3, help='number of support examples per class in a task')
     parser.add_argument('--num_query', type=int, default=1, help='number of query examples per class in a task')
     parser.add_argument('--meta_batch_size', type=int, default=16, help='number of tasks per outer-loop update')
@@ -733,20 +739,3 @@ if __name__ == '__main__':
     parser.add_argument('--device', type=str, default='gpu')
     args = parser.parse_args()
     main(args)
-
-
-
-        # images, labels, random_order = next(meta_train_loader)
-        # support_frames = images[:,:-args.num_query]
-        # support_labels = labels[:,:-args.num_query]
-        # query_frames = images[:,-args.num_query:]
-        # query_labels = labels[:,-args.num_query:]
-        # support_frames = torch.squeeze(support_frames, dim=2)
-        # support_labels = torch.squeeze(support_labels, dim=2)
-        # query_frames = torch.squeeze(query_frames, dim=2)
-        # query_labels = torch.squeeze(query_labels, dim=2)
-        # print("\nSupport Set Shape:", support_frames.shape)
-        # print("Support Label Shape:", support_labels.shape)
-        # print("Query Set Shape:", query_frames.shape)
-        # print("Query Label Shape:", query_labels.shape)
-        # print("random order:", random_order)
