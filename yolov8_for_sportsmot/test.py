@@ -41,10 +41,10 @@ def detect(image_path, weights="yolov8n.pt", output_dir="./inference/output"):
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--image', type=str, default = r"/Users/laviniap/Desktop/Autumn 2023 2024/a_CS 330 - Deep Multi-Task and Meta Learning/Project/Project Repository/CS330_MOT/data/sportsmot_publish/dataset/test/v_iF9bKPWdZlc_c001/img1/000001.jpg", help='path to image file')
-    parser.add_argument('--weights', type=str, default=r"/Users/laviniap/Desktop/Autumn 2023 2024/a_CS 330 - Deep Multi-Task and Meta Learning/Project/Project Repository/CS330_MOT/yolov8_for_sportsmot/best.pt", help='path to model weights')
+    parser.add_argument('--weights', type=str, default=r"/Users/laviniap/Desktop/Autumn 2023 2024/a_CS 330 - Deep Multi-Task and Meta Learning/Project/Project Repository/CS330_MOT/YOLOV8_for_Sportsmot/best.pt", help='path to model weights')
     parser.add_argument('--output_dir', type=str, default='./inference/output', help='output directory for saving results')
     args = parser.parse_args()
 
     detect(args.image, args.weights, args.output_dir)
 
-# python test.py --image r"/Users/laviniap/Desktop/Autumn 2023 2024/a_CS 330 - Deep Multi-Task and Meta Learning/Project/Project Repository/CS330_MOT/data/sportsmot_publish/dataset/test/v_-9kabh1K8UA_c008/img1/000001.jpg" --weights r"/Users/laviniap/Desktop/Autumn 2023 2024/a_CS 330 - Deep Multi-Task and Meta Learning/Project/Project Repository/CS330_MOT/yolov8_for_sportsmot/best.pt" --output_dir /output_directory
+# python test.py --image r"/Users/laviniap/Desktop/Autumn 2023 2024/a_CS 330 - Deep Multi-Task and Meta Learning/Project/Project Repository/CS330_MOT/data/sportsmot_publish/dataset/test/v_-9kabh1K8UA_c008/img1/000001.jpg" --weights r"/Users/laviniap/Desktop/Autumn 2023 2024/a_CS 330 - Deep Multi-Task and Meta Learning/Project/Project Repository/CS330_MOT/YOLOV8_for_Sportsmot/best.pt" --output_dir /output_directory
