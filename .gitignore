@@ -5,6 +5,7 @@
 *.npy
 *.ini
 # *.txt
-sportsmot_publish/*
+data/sportsmot_publish/*
 logs/*
 *.png
+data/MOT-ReID/*

@@ -14,7 +14,7 @@ import json
 import cv2
 from tqdm import tqdm
 
-DATA_PATH = "PATH/TO/sportsmot"
+DATA_PATH = "data\sportsmot_publish\dataset"
 OUT_PATH = os.path.join(DATA_PATH, "annotations")
 os.makedirs(OUT_PATH)
 SPLITS = ["train", "val", "test"]
