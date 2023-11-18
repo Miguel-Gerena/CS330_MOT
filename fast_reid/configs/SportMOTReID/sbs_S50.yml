@@ -1,0 +1,17 @@
+_BASE_: ../Base-SBS.yml
+
+MODEL:
+  BACKBONE:
+#    NORM: syncBN
+    NAME: build_resnest_backbone
+#  HEADS:
+#    NORM: syncBN
+SOLVER:
+  AMP:
+    ENABLED: False
+
+DATASETS:
+  NAMES: ("SportMOTReID",)
+  TESTS: ("SportMOTReID",)
+
+OUTPUT_DIR: fast_reid/logs/SportMOTReID/sbs_S50
