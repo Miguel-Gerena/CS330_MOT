@@ -8,4 +8,5 @@
 data/sportsmot_publish/*
 logs/*
 *.png
-data/MOT-ReID/*
+data/SportMOTReID/*
+*.0

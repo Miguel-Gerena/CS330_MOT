@@ -37,4 +37,5 @@ dependencies:
     - datasets==2.13.1
     - numpy==1.25.1
     - motmetrics
-    - yolox
+    - SORT -e "."
+    - cython_bbox
