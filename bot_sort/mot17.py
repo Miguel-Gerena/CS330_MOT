@@ -4,7 +4,6 @@
 @contact: sherlockliao01@gmail.com
 """
 
-
 import glob
 import os.path as osp
 import re
@@ -72,19 +71,47 @@ class MOT17(ImageDataset):
     def process_dir(self, dir_path, is_train=True):
 
         img_paths = glob.glob(osp.join(dir_path, '*.bmp'))
-        pattern = re.compile(r'([-\d]+)_MOT17-([-\d]+)-FRCNN')
+
+        # Refined pattern to match pid and camid
+        pattern = re.compile(r'(\d+)_v_[a-zA-Z0-9_-]+_c(\d+)_\d+_acc_data\.bmp$')
+
+        # data = []
+        # for img_path in img_paths:
+        #     print("img_path:", img_path)
+        #     match = pattern.search(img_path)
+        #     if match is not None:
+        #         groups = match.groups()
+        #         pid, camid = map(int, (groups[0], groups[2]))
+        #         # Add conditions or adjustments as needed
+        #         if pid == 0:  # Assuming 0 means background
+        #             continue  # Ignore background images
+        #         camid -= 1  # Adjusting camid index
+        #         data.append((img_path, pid, camid))
+        #     else:
+        #         print(f"No match found for {img_path}")
+
+        # print(data)
+        pattern = re.compile(r'(\d+)_v_[a-zA-Z0-9_-]+_c(\d+)_\d+_acccon_data\.bmp$')
 
         data = []
         for img_path in img_paths:
-            pid, camid = map(int, pattern.search(img_path).groups())
-            if pid == -1:
-                continue  # junk images are just ignored
-            # assert 0 <= pid   # pid == 0 means background
-            # assert 1 <= camid <= 5
-            camid -= 1  # index starts from 0
-            if is_train:
-                pid = self.dataset_name + "_" + str(pid)
-                camid = self.dataset_name + "_" + str(camid)
-            data.append((img_path, pid, camid))
+            match = pattern.search(img_path)
+            if match:
+                pid, camid = map(int, match.groups())
+                if pid == -1:
+                    continue  # Junk images are ignored
+                # assert 0 <= pid   # pid == 0 means background
+                # assert 1 <= camid <= 5
+                camid -= 1  # Index starts from 0
+                if is_train:
+                    pid = self.dataset_name + "_" + str(pid)
+                    camid = self.dataset_name + "_" + str(camid)
+                data.append((img_path, pid, camid))
+                print("Match found!")
+            else:
+                # Handle cases where the pattern doesn't match the filename
+
+                print(f"No match for {img_path}")
+                print(pattern)
 
         return data
