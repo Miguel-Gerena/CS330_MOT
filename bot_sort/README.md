@@ -5,5 +5,6 @@ First, make sure you put the sportsmot dataset inside /fast_reid/datasets/MOT17 
 ![img.png](img.png)
 
 Then follow the instructions from the repo for the data preparation, but use my files:
-- [generate_mot_patches.py](generate_mot_patches.py) for data preparation
-- [train_net.py](train_net.py) for data training
+- [generate_mot_patches.py](generate_mot_patches.py) for data preparation (paste it insde BoT-SORT/fast_reid/datasets/generate_mot_patches.py)
+- [train_net.py](train_net.py) for data training (paste it inside BoT-SORT/fast_reid/tools/train_net.py)
+- [mot17.py](mot17.py) (paste it inside BoT-SORT/fast_reid/fastreid/data/datasets/mot17.py)
