@@ -29,6 +29,27 @@ def convert_ground_truth_to_npy(batch_type, config={}):
             with open(data_folder + video + f"/gt/{key}.txt", "w") as f:
                 f.write("")
 
+def convert_images_video(config={}):
+    data_folder = config.get("data_folder", f"./data/combined_train_val/")
+    for batch_type in ["train", "val", "test"]:
+        with open(f"./data/combined_counts/{batch_type}_counts_by_sport.json", 'r') as f:
+            videoID_by_sport = json.load(f)
+
+        for key, value in videoID_by_sport.items():
+            for video in value:
+                img_array = []
+
+                for file in os.listdir(data_folder + video +"/img1/"):
+                    img = cv2.imread(data_folder + video +"/img1/" + file)
+                    height, width, layers = img.shape
+                    size = (width,height)
+                    img_array.append(img)
+
+                writer = cv2.VideoWriter(f'{data_folder}/{video}/{video}.mp4', cv2.VideoWriter_fourcc(*'XVID'), 25, size)
+                for frame in img_array:
+                    writer.write(frame)
+                writer.release()
+
 
 def move_datasets(data_set):
     with open(f"{data_set}_counts_by_sport.json", 'r') as f:
