@@ -4,10 +4,14 @@
 *.csv
 *.npy
 *.ini
-# *.txt
+*.txt
 data/sportsmot_publish/*
 logs/*
 *.png
 data/SportMOTReID/*
 *.0
 *.mp4
+*.pt
+*.pth
+*.tar
+*.tar*
