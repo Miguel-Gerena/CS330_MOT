@@ -205,10 +205,10 @@ def get_batches(dict, batch_size, num_support_videos, num_query_videos, num_supp
             support_set, query_set = combine_support_query_sets(support, query)
             print("combined the sets")
             support_frames_tensor, support_labels_tensor, query_frames_tensor, query_labels_tensor = convert_support_query_to_tensors(support_set, query_set, device)
-            support_frames_tensor = support_frames_tensor.to(device)
-            support_labels_tensor = support_labels_tensor.to(device)
-            query_frames_tensor = query_frames_tensor.to(device)
-            query_labels_tensor = query_labels_tensor.to(device)
+            # support_frames_tensor = support_frames_tensor.to(device)
+            # support_labels_tensor = support_labels_tensor.to(device)
+            # query_frames_tensor = query_frames_tensor.to(device)
+            # query_labels_tensor = query_labels_tensor.to(device)
 
             print("converted splits to tensors")
             # Add this task to the batch_tasks
@@ -247,11 +247,11 @@ def convert_annotations_to_features(annotations):
 def convert_to_tensors(data_dict, device):
 
     frames = np.stack([load_image(path) for _, path in data_dict['frames']])
-    frames_tensor = torch.tensor(frames, dtype=torch.float32)
+    frames_tensor = torch.tensor(frames, dtype=torch.float32).to(device)
     
     # Convert annotation data to features
     annotations_features = convert_annotations_to_features(data_dict['annotations'])
-    annotations_tensor = torch.tensor(annotations_features, dtype=torch.float32)
+    annotations_tensor = torch.tensor(annotations_features, dtype=torch.float32).to(device)
     
     return frames_tensor, annotations_tensor
 
