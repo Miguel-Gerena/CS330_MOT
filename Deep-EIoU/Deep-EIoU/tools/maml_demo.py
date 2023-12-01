@@ -403,17 +403,11 @@ class MAML:
             # Iterate over each video in the sport
             for video_idx in range(images.shape[1]):
                 # Initialize a list to hold all frames of the current video
-                video_frames = []
-
-                # Iterate over each frame in the video and accumulate them
-                for frame_idx in range(images.shape[0]):
-                    current_frame = images[frame_idx, video_idx, sport_idx]
-                    video_frames.append(current_frame)
 
                 # Convert the list of frames to a tensor
-                video_frames_tensor = torch.stack(video_frames, dim=0)
+                video_frames_tensor = images[:, video_idx, sport_idx]
                 video_frames_tensor = video_frames_tensor.reshape(-1, 3, int(720 * 0.25), int(1280 * 0.25))
-                video_frames_tensor = video_frames_tensor.to(args.device)
+                video_frames_tensor.to(args.device)
 
                 # Process the batch of frames through the model
                 logits = self.model(video_frames_tensor)
@@ -713,6 +707,7 @@ class MAML:
                     last_best_step = i_step
                     self._save(i_step)  # Save the model checkpoint
                     print(f'Saved new best checkpoint with validation accuracy: {best_val_accuracy:.4f}')
+                torch.cuda.empty_cache()
                 
             if i_step - last_best_step >= 100:
                 print("Stopping training - 100 steps have passed since the last best accuracy")
