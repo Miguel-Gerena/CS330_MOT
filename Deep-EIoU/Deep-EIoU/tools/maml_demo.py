@@ -134,7 +134,7 @@ def make_parser():
     parser.add_argument('--appearance_thresh', type=float, default=0.25, help='threshold for rejecting low appearance similarity reid matches')
 
     # maml args
-    parser.add_argument('--fine_tune', default=False, action='store_true', help='uses pretrained weights and fine tunes')
+    parser.add_argument('--fine_tune', default=True, action='store_true', help='uses pretrained weights and fine tunes')
     parser.add_argument('--log_dir', type=str, default=None, help='directory to save to or load from')
     parser.add_argument('--model', type=str, default='maml', help='model to run')
     parser.add_argument('--num_videos', type=int, default=1, help='number of videos to include in the support set')
@@ -366,12 +366,17 @@ class MAML:
         self.max_classes = max_classes
         self.device = device
         self._num_inner_steps = num_inner_steps
-        self._inner_lrs = inner_lr  
+        # self._inner_lrs = inner_lr  
         self._outer_lr = outer_lr
         self._optimizer = torch.optim.Adam(model.parameters(), lr=self._outer_lr)
         self._log_dir = log_dir
         os.makedirs(self._log_dir, exist_ok=True)
         self._start_train_step = 0
+
+        # self.inner_lr_dict = {name: self._inner_lrs for name, param in self.model.named_parameters()}
+        # self._inner_lrs = {k: torch.tensor(inner_lr, requires_grad=learn_inner_lrs) for k in self.model.named_parameters()}
+        self._inner_lrs = {name: torch.tensor(inner_lr, requires_grad=False) for name, _ in self.model.named_parameters()}
+
 
     def _forward(self, images):
 
@@ -406,13 +411,14 @@ class MAML:
 
                 # Process the batch of frames through the model
                 logits = self.model(video_frames_tensor)
-                player_id_logits = torch.cat((player_id_logits, logits), dim=0) # output shape: (num_support*num_sports, num_way)
+                player_id_logits = torch.cat((player_id_logits, logits), dim=0) # output shape: (num frames*num_sports, num_way)
 
-        # if isQuery:
-        #     player_id_logits = player_id_logits.reshape(args.num_query, args.num_sports, args.num_way)
+        if isQuery:
+            player_id_logits = player_id_logits.reshape(args.num_query, args.num_sports, args.num_way)
 
-        # else:
-        #     player_id_logits = player_id_logits.reshape(args.num_support, args.num_sports, args.num_way)
+        else:
+            player_id_logits = player_id_logits.reshape(args.num_support, args.num_sports, args.num_way)
+
 
         return player_id_logits
 
@@ -421,60 +427,24 @@ class MAML:
         accuracies = []
         accuracy_dict = {}
         accuracy_dict2 = {}
-        parameters = {name: param.clone() for name, param in self.model.named_parameters()}
+        # parameters = {name: param.clone() for name, param in self.model.named_parameters()}
+        parameters = list(self.model.parameters())
 
         for step in range(self._num_inner_steps):
             self.model.train() if train else self.model.eval()
-
-            # # outputs = self._forward(images)
-            # print(images.shape)
-            # print(self.model)
-
-            # outputs = self.model(images)
-            # print(outputs)
-            # print(outputs.shape)
-            # exit()
-
-            # # Iterate over each sport
-            # for sport_idx in range(images.shape[2]):
-            #     # Iterate over each video in the sport
-            #     for video_idx in range(images.shape[1]):
-            #         # Iterate over each frame in the video
-            #         for frame_idx in range(images.shape[0]):
-            #             # Extract the current frame
-            #             current_frame = images[frame_idx, video_idx, sport_idx]
-            #             current_labels = labels[frame_idx, video_idx, sport_idx]
-
-            #             print(current_frame.shape)
-            #             print(current_labels.shape)
-            #             current_frame = current_frame.unsqueeze(0)  # Add batch dimension
-            #             current_labels = current_labels.unsqueeze(0)  # Add batch dimension
-            #             print(current_frame.shape)
-            #             print(current_labels.shape)
-            #             # Forward pass for the current frame
-            #             current_frame = current_frame.reshape(1, 3, 192, 320)
-            #             # current_frame = current_frame.reshape(1, 3, 608, 1280)
-            #             # current_frame = current_frame.reshape(1, 3, int(720*0.25), int(1280*0.25))
-            #             print(current_frame.shape)
-                        
-            #             # output = self.model(current_frame, current_labels)
-            #             output = self.model(current_frame)
 
 
             player_id_logits = self.get_player_id_logits(images, train)
             player_id_logits = player_id_logits.to(args.device)
 
+
             labels = labels.squeeze(1)
             player_id_labels = labels[..., 1]  # shape (num frames, num sports, num way)
 
-            label_tensor_one_hot = torch.rand(args.num_support, args.num_sports, args.num_way)
-            # Convert one-hot encoded labels to class indices
-            label_tensor_indices = torch.argmax(label_tensor_one_hot, dim=-1)  # shape [num_frames_per_sport, num_sports] tensor
-            # Flatten the label tensor to match the shape of logits
-            player_id_labels = label_tensor_indices.view(-1)  # flattens it to shape [num_frames_per_sport * num_sports]
             player_id_labels = player_id_labels.to(args.device)
+            player_id_loss = F.cross_entropy(player_id_logits, player_id_labels, ignore_index=-1)
 
-            player_id_loss = F.cross_entropy(player_id_logits, player_id_labels)
+
 
             # Calculate accuracy for each component
             accuracy_dict = {
@@ -483,14 +453,18 @@ class MAML:
             accuracies.append(accuracy_dict)
 
 
-            # Calculate gradients using autograd.grad
-            if train: 
-                self.model.zero_grad()
-                inner_gradients = torch.autograd.grad(player_id_loss, parameters.values(), create_graph=True, allow_unused=True)
-                for (name, param), grad in zip(parameters.items(), inner_gradients):
+            if train:
+                gradients = torch.autograd.grad(player_id_loss, parameters, create_graph=True, allow_unused=True)
+            else:
+                gradients = torch.autograd.grad(player_id_loss, parameters, create_graph=False)
+
+            with torch.no_grad(): 
+                for param, grad, (name, _) in zip(parameters, gradients, self.model.named_parameters()):
                     if grad is not None:
-                        param = param - self._inner_lrs * grad 
-                        self.model.state_dict()[name].copy_(param) 
+                        # Retrieve the learning rate for the current parameter from the dictionary
+                        lr = self._inner_lrs[name].item()  
+                        # Update the parameter using its gradient and learning rate
+                        param.data -= lr * grad
 
         
         player_id_logits2 = self.get_player_id_logits(images, train)
@@ -552,14 +526,15 @@ class MAML:
 
             player_id_logits = self.get_player_id_logits(images_query, train, isQuery=True)
 
-            label_tensor_one_hot = torch.rand(args.num_query, args.num_sports, args.num_way)
-            # Convert one-hot encoded labels to class indices
-            label_tensor_indices = torch.argmax(label_tensor_one_hot, dim=-1)  # gives shape [num_frames, num_sports] tensor
-            # Flatten the label tensor to match the shape of logits
-            player_id_labels = label_tensor_indices.view(-1)  # flattens it to shape [num_frames * num_sports]
-            player_id_labels = player_id_labels.to(args.device)
+            # label_tensor_one_hot = torch.rand(args.num_query, args.num_sports, args.num_way)
+            # # Convert one-hot encoded labels to class indices
+            # label_tensor_indices = torch.argmax(label_tensor_one_hot, dim=-1)  # gives shape [num_frames, num_sports] tensor
+            # # Flatten the label tensor to match the shape of logits
+            # player_id_labels = label_tensor_indices.view(-1)  # flattens it to shape [num_frames * num_sports]
 
-            player_id_loss = F.cross_entropy(player_id_logits, player_id_labels)
+
+            player_id_labels = player_id_labels.to(args.device)
+            player_id_loss = F.cross_entropy(player_id_logits, player_id_labels, ignore_index=-1)
         
             # Calculate accuracy for each component
             accuracy_query = {
@@ -617,6 +592,7 @@ class MAML:
 
         # print(f" query accuracies: {accuracy_query_mean}")
 
+        print("Outer loss: ", outer_loss)
         return outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query_mean
 
     def train(self, dataloader_meta_train, dataloader_meta_val, writer):
@@ -687,7 +663,6 @@ class MAML:
 
             # print("VALIDATION")
             if i_step % VAL_INTERVAL == 0:
-                # print("\nIn val interval check")
                 losses = []
                 val_accuracies_pre_adapt_support = {}
                 val_accuracies_post_adapt_support = {}
@@ -870,7 +845,7 @@ def main(exp, args):
 
     log_dir = args.log_dir
     if log_dir is None:
-        log_dir = f'./logs/{args.model}/{args.experiment_name}/way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}hd_{NUM_HIDDEN_CHANNELS}.cvl_{NUM_CONV_LAYERS}'  # pylint: disable=line-too-long
+        log_dir = f'./logs/{args.model}/{args.experiment_name}/Bway_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}hd_{NUM_HIDDEN_CHANNELS}.cvl_{NUM_CONV_LAYERS}'  # pylint: disable=line-too-long
     log_dir = Path(log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
     print(f'log_dir: {log_dir}')
@@ -1044,34 +1019,34 @@ def main(exp, args):
         return
     
 
-    latest_checkpoint_path = find_latest_checkpoint(log_dir)
-    if latest_checkpoint_path:
-        print(f"Loading fine tuned checkpoint: {latest_checkpoint_path}")
-        checkpoint = torch.load(latest_checkpoint_path, map_location=args.device)
-        extractor_model.load_state_dict(checkpoint['model_state_dict'])
-        print("Fine tuned checkpoint loaded successfully.")
-    else:
-        print("No fine tuned checkpoints found.")
+    # latest_checkpoint_path = find_latest_checkpoint(log_dir)
+    # if latest_checkpoint_path:
+    #     print(f"Loading fine tuned checkpoint: {latest_checkpoint_path}")
+    #     checkpoint = torch.load(latest_checkpoint_path, map_location=args.device)
+    #     extractor_model.load_state_dict(checkpoint['model_state_dict'])
+    #     print("Fine tuned checkpoint loaded successfully.")
+    # else:
+    #     print("No fine tuned checkpoints found.")
 
-    extractor_model.eval()
-    predictor = Predictor(model, exp, trt_file, decoder, args.device, args.fp16)
-    extractor = FeatureExtractor(model=extractor_model, device='cuda') 
-    # extractor = FeatureExtractor(model=extractor_model, model_path = 'checkpoints/sports_model.pth.tar-60', device='cuda')   
+    # extractor_model.eval()
+    # predictor = Predictor(model, exp, trt_file, decoder, args.device, args.fp16)
+    # extractor = FeatureExtractor(model=extractor_model, device='cuda') 
+    # # extractor = FeatureExtractor(model=extractor_model, model_path = 'checkpoints/sports_model.pth.tar-60', device='cuda')   
 
 
-    dir = args.path  
-    if os.path.exists(os.path.join(dir, 'img1')):
-        process_sequence(predictor, extractor, os.path.join(dir, 'img1'), vis_folder, args)
-    else:
-        # Otherwise, assume it contains subdirectories, each representing a video sequence
-        sequence_dirs = [os.path.join(dir, f) for f in os.listdir(dir) if os.path.isdir(os.path.join(dir, f))]
+    # dir = args.path  
+    # if os.path.exists(os.path.join(dir, 'img1')):
+    #     process_sequence(predictor, extractor, os.path.join(dir, 'img1'), vis_folder, args)
+    # else:
+    #     # Otherwise, assume it contains subdirectories, each representing a video sequence
+    #     sequence_dirs = [os.path.join(dir, f) for f in os.listdir(dir) if os.path.isdir(os.path.join(dir, f))]
 
-        for seq_dir in sequence_dirs:
-            img_dir = os.path.join(seq_dir, 'img1')
-            if os.path.exists(img_dir):
-                process_sequence(predictor, extractor, img_dir, vis_folder, args)
-            else:
-                logger.error(f"'img1' subfolder not found in {seq_dir}")
+    #     for seq_dir in sequence_dirs:
+    #         img_dir = os.path.join(seq_dir, 'img1')
+    #         if os.path.exists(img_dir):
+    #             process_sequence(predictor, extractor, img_dir, vis_folder, args)
+    #         else:
+    #             logger.error(f"'img1' subfolder not found in {seq_dir}")
 
 
 if __name__ == "__main__":

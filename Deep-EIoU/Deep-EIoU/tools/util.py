@@ -2,52 +2,59 @@
 import torch
 import cv2
 import numpy as np
+import torch.nn.functional as F
+
+
+def calculate_accuracy(logits, labels):
+    # Convert logits to probabilities
+    probabilities = torch.softmax(logits, dim=-1)
+    predicted_classes = torch.argsort(probabilities, dim=-1, descending=True)
+
+    correct_count = 0
+    total_valid_predictions = 0
+
+    # Iterate over each frame and sport
+    for i in range(labels.shape[0]):  # Loop over frames
+        for j in range(labels.shape[1]):  # Loop over sports
+            valid_labels = labels[i, j, labels[i, j] != -1]
+
+            # Get the top-N predictions where N is the number of valid labels
+            top_n_predictions = predicted_classes[i, j, :len(valid_labels)]
+
+            # Count correct predictions
+            for prediction in top_n_predictions:
+                if prediction in valid_labels:
+                    correct_count += 1
+
+            total_valid_predictions += len(valid_labels)
+
+    # Calculate accuracy
+    accuracy = correct_count / total_valid_predictions if total_valid_predictions > 0 else 0.0
+
+    return accuracy
+
+
+
+
+
 
 
 # def calculate_accuracy(logits, labels):
 #     # Convert logits to probabilities
 #     probabilities = torch.softmax(logits, dim=-1)
-#     predicted_classes = torch.argsort(probabilities, dim=-1, descending=True)
+#     # Get the class with the highest probability for each frame
+#     predicted_classes = torch.argmax(probabilities, dim=-1)
 
-#     correct_count = 0
-#     total_valid_predictions = 0
+#     # Count how many predictions match the labels
+#     correct_count = torch.sum(predicted_classes == labels).item()
 
-#     # Iterate over each frame and sport
-#     for i in range(labels.shape[0]):  # Loop over frames
-#         for j in range(labels.shape[1]):  # Loop over sports
-#             valid_labels = labels[i, j, labels[i, j] != -1]
-
-#             # Get the top-N predictions where N is the number of valid labels
-#             top_n_predictions = predicted_classes[i, j, :len(valid_labels)]
-
-#             # Count correct predictions
-#             for prediction in top_n_predictions:
-#                 if prediction in valid_labels:
-#                     correct_count += 1
-
-#             total_valid_predictions += len(valid_labels)
+#     # Calculate the total number of frames
+#     total_frames = labels.size(0)
 
 #     # Calculate accuracy
-#     accuracy = correct_count / total_valid_predictions if total_valid_predictions > 0 else 0.0
+#     accuracy = correct_count / total_frames if total_frames > 0 else 0.0
 
 #     return accuracy
-
-def calculate_accuracy(logits, labels):
-    # Convert logits to probabilities
-    probabilities = torch.softmax(logits, dim=-1)
-    # Get the class with the highest probability for each frame
-    predicted_classes = torch.argmax(probabilities, dim=-1)
-
-    # Count how many predictions match the labels
-    correct_count = torch.sum(predicted_classes == labels).item()
-
-    # Calculate the total number of frames
-    total_frames = labels.size(0)
-
-    # Calculate accuracy
-    accuracy = correct_count / total_frames if total_frames > 0 else 0.0
-
-    return accuracy
 
 
 
