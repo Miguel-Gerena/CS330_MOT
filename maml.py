@@ -505,8 +505,6 @@ def main(args):
         DEVICE
     )
 
-    
-
     if args.checkpoint_step > -1:
         maml.load(args.checkpoint_step)
     else:
@@ -522,8 +520,6 @@ def main(args):
             f'num_query={args.num_query}'
         )
 
-
-        
         dataloader_meta_train = omniglot.get_omniglot_dataloader(
             'train',
             args.batch_size,

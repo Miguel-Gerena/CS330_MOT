@@ -6,6 +6,8 @@
 *.ini
 # *.txt
 data/sportsmot_publish/*
+data/*
+datasets/*
 logs/*
 *.png
 data/SportMOTReID/*
