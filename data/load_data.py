@@ -12,10 +12,12 @@ import shutil
 from configparser import ConfigParser
 import cv2
 
+PARENT_FOLDER = "/home/LavinuxCS330azureuser/CS330_MOT_Project_V2/CS330_MOT" #parent folder containing data/sportsmot_publish (original dataset)
+
 
 def convert_ground_truth_to_npy(batch_type, config={}):
-    data_folder = config.get("data_folder", f"c:/users/akayl/desktop/CS330_MOT/data/combined_train_val/")
-    with open(f"c:/users/akayl/desktop/CS330_MOT/data/combined_counts/{batch_type}_counts_by_sport.json", 'r') as f:
+    data_folder = config.get("data_folder", f"{PARENT_FOLDER}/data/combined_train_val/")
+    with open(f"{PARENT_FOLDER}/data/combined_counts/{batch_type}_counts_by_sport.json", 'r') as f:
         videoID_by_sport = json.load(f)
 
     for key, value in videoID_by_sport.items():
@@ -30,9 +32,9 @@ def convert_ground_truth_to_npy(batch_type, config={}):
                 f.write("")
 
 def convert_images_video(config={}):
-    data_folder = config.get("data_folder", f"c:/users/akayl/desktop/CS330_MOT/data/combined_train_val/")
+    data_folder = config.get("data_folder", f"{PARENT_FOLDER}/data/combined_train_val/")
     for batch_type in ["train", "val", "test"]:
-        with open(f"c:/users/akayl/desktop/CS330_MOT/data/combined_counts/{batch_type}_counts_by_sport.json", 'r') as f:
+        with open(f"{PARENT_FOLDER}/data/combined_counts/{batch_type}_counts_by_sport.json", 'r') as f:
             videoID_by_sport = json.load(f)
 
         for key, value in videoID_by_sport.items():
@@ -58,7 +60,7 @@ def move_datasets(data_set):
     train = train_folders[0] + train_folders[1] + train_folders[2] 
 
 
-def get_jsons_by_sport(count_folder= "c:/users/akayl/desktop/CS330_MOT/data/combined_counts/", files=["test_counts.json", "train_counts.json", "val_counts.json"]):
+def get_jsons_by_sport(count_folder= f"{PARENT_FOLDER}/data/combined_counts/", files=["test_counts.json", "train_counts.json", "val_counts.json"]):
     """
     This will create files to store the video ids by sport in json format.
     Args:
@@ -115,7 +117,7 @@ class DataGenerator(IterableDataset):
         self.frames_per_video = frames_per_video
         self.number_of_sports = number_of_sports
         self.config = ConfigParser()
-        self.data_folder = config.get("data_folder", f"c:/users/akayl/desktop/CS330_MOT/data/combined_train_val/")
+        self.data_folder = config.get("data_folder", f"{PARENT_FOLDER}/data/combined_train_val/")
         if grayscale:
             self.img_size = config.get("img_size", (int(720*resolution_percent), int(1280*resolution_percent)))
         else:
@@ -128,7 +130,7 @@ class DataGenerator(IterableDataset):
         self.grayscale = grayscale
         self.resolution_percent = resolution_percent
 
-        with open(f"c:/users/akayl/desktop/CS330_MOT/data/combined_counts/{batch_type}_counts_by_sport.json", 'r') as f:
+        with open(f"{PARENT_FOLDER}/data/combined_counts/{batch_type}_counts_by_sport.json", 'r') as f:
             self.videoID_by_sport = json.load(f)
 
         self.dim_input = np.prod(self.img_size)
@@ -245,5 +247,13 @@ class DataGenerator(IterableDataset):
         while True:
             yield self._sample()
 
-# a = DataGenerator(1,3,"train")
+# DataGenerator(1,3,"train")
 # a._sample()
+meta_train_iterable = DataGenerator(
+        1,
+        3,
+        batch_type="train",
+        cache=False,
+        generate_new_tasks=True
+        )
+print(meta_train_iterable._sample())
