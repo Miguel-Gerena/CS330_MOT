@@ -406,7 +406,7 @@ class MAML:
 
                 # Convert the list of frames to a tensor
                 video_frames_tensor = images[:, video_idx, sport_idx]
-                video_frames_tensor = video_frames_tensor.reshape(-1, 3, int(720 * 0.25), int(1280 * 0.25))
+                # video_frames_tensor = video_frames_tensor.reshape(-1, 3, int(720 * 0.25), int(1280 * 0.25))
                 video_frames_tensor.to(args.device)
 
                 # Process the batch of frames through the model
