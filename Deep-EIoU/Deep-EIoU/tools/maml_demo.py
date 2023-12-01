@@ -2,7 +2,7 @@ import argparse
 import re
 import os
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-import tensorflow as tf
+# import tensorflow as tf
 import os.path as osp
 import numpy as np
 import time
@@ -18,6 +18,8 @@ import torch.nn.functional as F
 from torch import autograd
 import sys
 sys.path.append('.')
+# sys.path.append('Deep-EIoU/Deep-EIoU/')
+
 
 from loguru import logger
 
@@ -35,8 +37,12 @@ from torchreid.utils import load_pretrained_weights
 from pathlib import Path
 from torch.utils import tensorboard
 from tqdm import tqdm
-sys.path.append('C:/Users/akayl/Desktop/CS330_MOT')
-from data import DataGenerator  
+if os.getlogin() == "DK":
+    base_path ="D:/classes/CS330/project/CS330_MOT"
+else:
+    base_path = 'C:/Users/akayl/Desktop/CS330_MOT'
+sys.path.append(base_path)
+from data_cs import DataGenerator  
 from torch.utils.data import DataLoader, BatchSampler, RandomSampler
 from torchreid.utils import (check_isfile, load_pretrained_weights, compute_model_complexity)
 from sklearn.metrics import log_loss
@@ -65,11 +71,11 @@ WEIGHT_PLAYER_ID = 1.0
 
 def make_parser():
     parser = argparse.ArgumentParser("DeepEIoU Demo")
-    parser.add_argument("-expn", "--experiment-name", type=str, default=None, help="should be: sportsmot-dataset_type (IE: test, train, val)")
+    parser.add_argument("-expn", "--experiment-name", type=str, default="sportsmot-train", help="should be: sportsmot-dataset_type (IE: test, train, val)")
     parser.add_argument("-n", "--name", type=str, default=None, help="model name")
 
     parser.add_argument(
-        "--path", default="../demo.mp4", help="path to images or video"
+        "--path", default=base_path + "/data/sportsmot_publish/dataset/train", help="path to images or video"
     )
     parser.add_argument(
         "--save_result",
@@ -99,7 +105,7 @@ def make_parser():
     parser.add_argument(
         "--fp16",
         dest="fp16",
-        default=False,
+        default=True,
         action="store_true",
         help="Adopting mix precision evaluating.",
     )
@@ -146,7 +152,7 @@ def make_parser():
     parser.add_argument('--meta_train_iterations', type=int, default=200, help='number of baches of tasks to iterate through for train')
     parser.add_argument('--meta_val_iterations', type=int, default=20, help='number of baches of tasks to iterate through for val per every check')
     parser.add_argument('--num_inner_steps', type=int, default=1, help='number of inner-loop updates')
-    parser.add_argument('--inner_lr', type=float, default=0.4, help='inner-loop learning rate initialization')
+    parser.add_argument('--inner_lr', type=float, default=0.04, help='inner-loop learning rate initialization')
     parser.add_argument('--learn_inner_lrs', default=False, action='store_true', help='whether to optimize inner-loop learning rates')
     parser.add_argument('--outer_lr', type=float, default=0.001, help='outer-loop learning rate')
     parser.add_argument('--test', default=False, action='store_true', help='train or test')
@@ -435,14 +441,16 @@ class MAML:
 
 
             player_id_logits = self.get_player_id_logits(images, train)
-            player_id_logits = player_id_logits.to(args.device)
+            player_id_logits.to(args.device)
 
 
             labels = labels.squeeze(1)
             player_id_labels = labels[..., 1]  # shape (num frames, num sports, num way)
+            player_id_labels.to(args.device)
+            player_id_labels = player_id_labels + 1
 
-            player_id_labels = player_id_labels.to(args.device)
-            player_id_loss = F.cross_entropy(player_id_logits, player_id_labels, ignore_index=-1)
+            # player_id_logits[player_id_labels[:,:]== -1] = 0
+            player_id_loss = F.cross_entropy(player_id_logits, player_id_labels)
 
 
 
@@ -517,24 +525,13 @@ class MAML:
             # print("labels_query:", labels_query.shape)
             labels_query = labels_query.squeeze(1)
             player_id_labels = labels_query[..., 1]
-
-            
-            # with torch.no_grad():
-            #     # self.model.eval()
-            #     player_id_logits = self.get_player_id_logits(images_query, isQuery=True)
-            #     player_id_loss = F.cross_entropy(player_id_logits, player_id_labels)
+            player_id_labels = player_id_labels + 1
+            player_id_labels.to(args.device)
 
             player_id_logits = self.get_player_id_logits(images_query, train, isQuery=True)
 
-            # label_tensor_one_hot = torch.rand(args.num_query, args.num_sports, args.num_way)
-            # # Convert one-hot encoded labels to class indices
-            # label_tensor_indices = torch.argmax(label_tensor_one_hot, dim=-1)  # gives shape [num_frames, num_sports] tensor
-            # # Flatten the label tensor to match the shape of logits
-            # player_id_labels = label_tensor_indices.view(-1)  # flattens it to shape [num_frames * num_sports]
-
-
-            player_id_labels = player_id_labels.to(args.device)
-            player_id_loss = F.cross_entropy(player_id_logits, player_id_labels, ignore_index=-1)
+            # player_id_logits[player_id_labels[:,:]== -1] = 0
+            player_id_loss = F.cross_entropy(player_id_logits, player_id_labels)
         
             # Calculate accuracy for each component
             accuracy_query = {
@@ -607,43 +604,22 @@ class MAML:
             dataloader_meta_val (DataLoader): loader for validation tasks
             writer (SummaryWriter): TensorBoard logger
         """
-        torch.autograd.set_detect_anomaly(True)
+        # torch.autograd.set_detect_anomaly(True)
         best_val_accuracy = float('-inf')
         last_best_step = 0 
         print(f'Starting training at iteration {self._start_train_step}.')
         for i_step, (images, labels, sports_order) in tqdm(enumerate(dataloader_meta_train, start=self._start_train_step), total=args.meta_train_iterations):
             if i_step >= args.meta_train_iterations:
                 break
-            # print(f"Train Iteration: {i_step + 1}/{args.meta_train_iterations}")
 
-            self._optimizer.step()
-            self._optimizer.zero_grad()
-
+            self.model.train()
             outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query = (
                 self._outer_step(images, labels, train=True)
             )
 
-            # self._optimizer.zero_grad() 
             outer_loss.backward()  
-            # self._optimizer.step() 
-
-
-            # print(f' Outer Loss: {outer_loss.item():.3f}')
-
-            # Print pre-adaptation accuracies
-            # print('Pre-adaptation support accuracies:')
-            # for key, value in pre_adapt_accuracy_mean.items():
-            #     print(f'{key}: {value:.3f}')
-
-            # # Print post-adaptation accuracies
-            # print('Post-adaptation support accuracies:')
-            # for key, value in post_adapt_accuracy_mean.items():
-            #     print(f'{key}: {value:.3f}')
-
-            # # Print query accuracies
-            # print('Query accuracies:')
-            # for key, value in accuracy_query.items():
-            #     print(f'{key}: {value:.3f}')
+            self._optimizer.step()
+            self._optimizer.zero_grad()
 
             # Write loss value to TensorBoard
             writer.add_scalar('loss/val', outer_loss.item(), i_step)
@@ -662,7 +638,8 @@ class MAML:
 
 
             # print("VALIDATION")
-            if i_step % VAL_INTERVAL == 0:
+            if i_step != 0 and i_step % VAL_INTERVAL == 0:
+                self.model.eval()
                 losses = []
                 val_accuracies_pre_adapt_support = {}
                 val_accuracies_post_adapt_support = {}
@@ -741,9 +718,6 @@ class MAML:
                 print("Stopping training - 100 steps have passed since the last best accuracy")
                 break
 
-            # if i_step % SAVE_INTERVAL == 0:
-            #     print(torch.cuda.memory_summary())
-            #     self._save(i_step)
 
 
     def _load(self, checkpoint_step):
@@ -843,13 +817,11 @@ def main(exp, args):
     logger.info("Using device: {}".format(args.device))
     random.seed(0)
 
-    log_dir = args.log_dir
-    if log_dir is None:
-        log_dir = f'./logs/{args.model}/{args.experiment_name}/Bway_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}hd_{NUM_HIDDEN_CHANNELS}.cvl_{NUM_CONV_LAYERS}'  # pylint: disable=line-too-long
-    log_dir = Path(log_dir)
-    log_dir.mkdir(parents=True, exist_ok=True)
-    print(f'log_dir: {log_dir}')
-    writer = tensorboard.SummaryWriter(log_dir=str(log_dir))
+    # log_dir = args.log_dir
+    # if log_dir is None:
+    log_dir = f"logs/{args.model}/{args.experiment_name}/Bway_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}hd_{NUM_HIDDEN_CHANNELS}.cvl_{NUM_CONV_LAYERS}"  # pylint: disable=line-too-long
+
+    writer = tensorboard.SummaryWriter("logs/test")
 
     if args.conf is not None:
         exp.test_conf = args.conf
@@ -894,59 +866,6 @@ def main(exp, args):
         decoder = None
 
 
-    # model.train()
-    # # Fine Tune
-    # if args.fine_tune and args.model == 'maml':
-    #     maml = MAML(args.num_sports, args.num_way, args.num_inner_steps, args.inner_lr,
-    #                 args.learn_inner_lrs, args.outer_lr, log_dir, args.device, model)
-
-    #     if args.checkpoint_step > -1:
-    #         maml.load(args.checkpoint_step)
-    #     else:
-    #         logger.info('Checkpoint loading skipped.')
-
-    #     if not args.test:
-    #         meta_train_iterable = DataGenerator(
-    #         args.num_videos,
-    #         args.num_support + args.num_query,
-    #         batch_type="train",
-    #         cache=False,
-    #         generate_new_tasks=True
-    #         )
-    #         meta_train_loader = iter(
-    #             torch.utils.data.DataLoader(
-    #                 meta_train_iterable,
-    #                 batch_size=args.meta_batch_size,
-    #                 num_workers=args.num_workers,
-    #                 # pin_memory=True,
-    #             )
-    #         )
-
-    #         meta_val_iterable = DataGenerator(
-    #         args.num_videos,
-    #         args.num_support + args.num_query,
-    #         batch_type="val",
-    #         cache=False,
-    #         generate_new_tasks=True
-    #         )
-    #         meta_val_loader = iter(
-    #             torch.utils.data.DataLoader(
-    #                 meta_val_iterable,
-    #                 batch_size=args.meta_batch_size,
-    #                 num_workers=args.num_workers,
-    #                 # pin_memory=True,
-    #             )
-    #         )
-
-    #     print("Loaded data")
-    #     maml.train(meta_train_loader, meta_val_loader, writer)
-
-    # elif args.fine_tune:
-    #     logger.error(f"ERROR: Model '{args.model}' is not implemented for fine-tuning")
-    #     return
-
-    # exit()
-
     extractor_model = build_model(
     name='osnet_x1_0', 
     num_classes= 23, 
@@ -956,16 +875,12 @@ def main(exp, args):
     )
     model_path = 'checkpoints/sports_model.pth.tar-60'
 
-    # # Replace the classifier layer
-    # if hasattr(extractor_model, 'classifier'):
-    #     in_features = extractor_model.classifier.in_features
-    #     extractor_model.classifier = nn.Linear(in_features, args.num_way)
 
     # Load pretrained weights
     if model_path and check_isfile(model_path):
         load_pretrained_weights(extractor_model, model_path)
 
-    extractor_model = extractor_model.to(args.device)
+    extractor_model.to(args.device)
 
     extractor_model.train()
     # Fine Tune
@@ -984,7 +899,8 @@ def main(exp, args):
             args.num_support + args.num_query,
             batch_type="train",
             cache=False,
-            generate_new_tasks=True
+            generate_new_tasks=True,
+            config={"data_folder":base_path + "/data_cs"}
             )
             meta_train_loader = iter(
                 torch.utils.data.DataLoader(
@@ -1000,7 +916,8 @@ def main(exp, args):
             args.num_support + args.num_query,
             batch_type="val",
             cache=False,
-            generate_new_tasks=True
+            generate_new_tasks=True,
+            config={"data_folder":base_path + "/data_cs"}
             )
             meta_val_loader = iter(
                 torch.utils.data.DataLoader(
@@ -1018,36 +935,6 @@ def main(exp, args):
         logger.error(f"ERROR: Model '{args.model}' is not implemented for fine-tuning")
         return
     
-
-    # latest_checkpoint_path = find_latest_checkpoint(log_dir)
-    # if latest_checkpoint_path:
-    #     print(f"Loading fine tuned checkpoint: {latest_checkpoint_path}")
-    #     checkpoint = torch.load(latest_checkpoint_path, map_location=args.device)
-    #     extractor_model.load_state_dict(checkpoint['model_state_dict'])
-    #     print("Fine tuned checkpoint loaded successfully.")
-    # else:
-    #     print("No fine tuned checkpoints found.")
-
-    # extractor_model.eval()
-    # predictor = Predictor(model, exp, trt_file, decoder, args.device, args.fp16)
-    # extractor = FeatureExtractor(model=extractor_model, device='cuda') 
-    # # extractor = FeatureExtractor(model=extractor_model, model_path = 'checkpoints/sports_model.pth.tar-60', device='cuda')   
-
-
-    # dir = args.path  
-    # if os.path.exists(os.path.join(dir, 'img1')):
-    #     process_sequence(predictor, extractor, os.path.join(dir, 'img1'), vis_folder, args)
-    # else:
-    #     # Otherwise, assume it contains subdirectories, each representing a video sequence
-    #     sequence_dirs = [os.path.join(dir, f) for f in os.listdir(dir) if os.path.isdir(os.path.join(dir, f))]
-
-    #     for seq_dir in sequence_dirs:
-    #         img_dir = os.path.join(seq_dir, 'img1')
-    #         if os.path.exists(img_dir):
-    #             process_sequence(predictor, extractor, img_dir, vis_folder, args)
-    #         else:
-    #             logger.error(f"'img1' subfolder not found in {seq_dir}")
-
 
 if __name__ == "__main__":
     args = make_parser().parse_args()

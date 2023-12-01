@@ -1,3 +1,4 @@
+*.pyd
 *.zip
 *.jpg
 *.pyc
@@ -5,13 +6,15 @@
 *.npy
 *.ini
 *.txt
-data/sportsmot_publish/*
+data_cs/sportsmot_publish/*
 logs/*
 *.png
-data/SportMOTReID/*
+data_cs/SportMOTReID/*
 *.0
 *.mp4
 *.pt
 *.pth
 *.tar
 *.tar*
+*.bmp
+SORT/*
