@@ -249,11 +249,11 @@ class DataGenerator(IterableDataset):
 
 # DataGenerator(1,3,"train")
 # a._sample()
-meta_train_iterable = DataGenerator(
-        1,
-        3,
-        batch_type="train",
-        cache=False,
-        generate_new_tasks=True
-        )
-print(meta_train_iterable._sample())
+# meta_train_iterable = DataGenerator(
+#         1,
+#         3,
+#         batch_type="train",
+#         cache=False,
+#         generate_new_tasks=True
+#         )
+# print(meta_train_iterable._sample())

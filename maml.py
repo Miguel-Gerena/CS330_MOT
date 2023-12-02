@@ -2,6 +2,7 @@
 import sys
 sys.path.append('..')
 sys.path.append('/home/LavinuxCS330azureuser/CS330_MOT_Project_V2/CS330_MOT/Stark')
+from tqdm import tqdm
 
 import argparse
 import os
@@ -15,7 +16,14 @@ from torch import autograd
 from torch.utils import tensorboard
 from lib.models.stark.stark_st import build_starkst
 import importlib
-
+from data.load_data import DataGenerator
+import copy
+import torch
+from torch import nn
+import torch.nn.functional as F
+import torch.optim as optim
+from collections import OrderedDict
+from lib.train.trainers import LTRTrainer
 NUM_INPUT_CHANNELS = 1
 NUM_HIDDEN_CHANNELS = 32
 KERNEL_SIZE = 3
@@ -85,68 +93,24 @@ class MAML:
         self.device = device
         self.tracking_model = tracking_model
 
-        if tracking_model == "maml_hw2_original":
+        config_module = importlib.import_module("lib.config.stark_st1.config")
+        cfg = config_module.cfg
+        net = build_starkst(cfg)
 
-            # construct feature extractor
-            in_channels = NUM_INPUT_CHANNELS
-            for i in range(NUM_CONV_LAYERS):
-                meta_parameters[f'conv{i}'] = nn.init.xavier_uniform_(
-                    torch.empty(
-                        NUM_HIDDEN_CHANNELS,
-                        in_channels,
-                        KERNEL_SIZE,
-                        KERNEL_SIZE,
-                        requires_grad=True,
-                        device=self.device
-                    )
-                )
-                meta_parameters[f'b{i}'] = nn.init.zeros_(
-                    torch.empty(
-                        NUM_HIDDEN_CHANNELS,
-                        requires_grad=True,
-                        device=self.device
-                    )
-                )
-                in_channels = NUM_HIDDEN_CHANNELS
+        # Load pretrained weights from the Stark model
+        stark_pretrained_weights = torch.load("/home/LavinuxCS330azureuser/CS330_MOT_Project_V2/CS330_MOT/Stark/checkpoints/train/stark_st2/baseline/STARKST_ep0050.pth.tar")
 
-            # construct linear head layer
-            meta_parameters[f'w{NUM_CONV_LAYERS}'] = nn.init.xavier_uniform_(
-                torch.empty(
-                    num_outputs,
-                    NUM_HIDDEN_CHANNELS,
-                    requires_grad=True,
-                    device=self.device
-                )
-            )
-            meta_parameters[f'b{NUM_CONV_LAYERS}'] = nn.init.zeros_(
-                torch.empty(
-                    num_outputs,
-                    requires_grad=True,
-                    device=self.device
-                )
-            )
+        # Initialize meta_parameters with pretrained weights relevant to your model's structure
+        meta_parameters = {}
 
-            self._meta_parameters = meta_parameters
+        net.load_state_dict(stark_pretrained_weights["net"])
+        self.net = net
 
-        elif tracking_model == "stark":
+        for key, value in stark_pretrained_weights["net"].items():
+            # if key.startswith('backbone') or key.startswith('transformer') or key.startswith('box_head') or key.startswith('cls_head'):
+            meta_parameters[key] = value
 
-            config_module = importlib.import_module("lib.config.stark_st1.config")
-            cfg = config_module.cfg
-            net = build_starkst(cfg)
-
-            # Load pretrained weights from the Stark model
-            stark_pretrained_weights = torch.load("/home/LavinuxCS330azureuser/CS330_MOT_Project_V2/CS330_MOT/Stark/checkpoints/train/stark_st2/baseline/STARKST_ep0050.pth.tar")
-
-            # Initialize meta_parameters with pretrained weights relevant to your model's structure
-            meta_parameters = {}
-
-            net.load_state_dict(stark_pretrained_weights["net"])
-            
-            for key, value in stark_pretrained_weights["net"].items():
-                if key.startswith('backbone'):
-                    meta_parameters[key] = value
-
-            self._meta_parameters = meta_parameters
+        self._meta_parameters = meta_parameters
 
         self._num_inner_steps = num_inner_steps
         self._inner_lrs = {
@@ -162,149 +126,351 @@ class MAML:
         )
         self._log_dir = log_dir
         os.makedirs(self._log_dir, exist_ok=True)
+        settings = importlib.import_module('lib.train.admin.local').EnvironmentSettings()
 
         self._start_train_step = 0
 
     def _forward(self, images, parameters):
-        """Computes predicted classification logits.
+        """Computes predicted outputs using the pre-trained STARK model.
 
-        Args:
-            images (Tensor): batch of Omniglot images
+            Args:
+            images (Tensor): batch of input images
                 shape (num_images, channels, height, width)
-            parameters (dict[str, Tensor]): parameters to use for
-                the computation
+            parameters (dict[str, Tensor]): parameters (not used in STARK forward pass)
 
-        Returns:
-            a Tensor consisting of a batch of logits
-                shape (num_images, classes)
-        """
-        x = images
-        for i in range(NUM_CONV_LAYERS):
-            x = F.conv2d(
-                input=x,
-                weight=parameters[f'conv{i}'],
-                bias=parameters[f'b{i}'],
-                stride=1,
-                padding='same'
-            )
-            x = F.batch_norm(x, None, None, training=True)
-            x = F.relu(x)
-        x = torch.mean(x, dim=[2, 3])
-        return F.linear(
-            input=x,
-            weight=parameters[f'w{NUM_CONV_LAYERS}'],
-            bias=parameters[f'b{NUM_CONV_LAYERS}']
-        )
+            Returns:
+                outputs: the output from the STARK model
+            """
+        # Ensure images are in the correct device
+        images = images.to(self.device)
+        
+        # Pass images through the STARK model (net)
+        outputs = self.net(images)
+
+        #TODO check how outpu looks like, output the predictions on the query examples
 
     def _inner_loop(self, images, labels, train):
-        """Computes the adapted network parameters via the MAML inner loop.
-
-        Args:
-            images (Tensor): task support set inputs
-                shape (num_images, channels, height, width)
-            labels (Tensor): task support set outputs
-                shape (num_images,)
-            train (bool): whether we are training or evaluating
-
-        Returns:
-            parameters (dict[str, Tensor]): adapted network parameters
-            accuracies (list[float]): support set accuracy over the course of
-                the inner loop, length num_inner_steps + 1
-            gradients(list[float]): gradients computed from auto.grad, just needed
-                for autograders, no need to use this value in your code and feel to replace
-                with underscore       
-        """
-
         accuracies = []
-
-        # Initialized parameters θ = Φ_{0}
         parameters = {
-            k: torch.clone(v)
+            k: torch.clone(v).requires_grad_(v.dtype.is_floating_point)
             for k, v in self._meta_parameters.items()
-        }
+        }   
 
-        # Inner loop optimization with self_num_inner_steps = L
-        for nis in range(self._num_inner_steps): # i = 0, ..., (self_num_inner_steps-1) = (L-1)
+        # Create a temporary module for the inner loop
+        temp_model = self.net
+        temp_model.load_state_dict(parameters, strict=False)
+        temp_model.train(train)
 
-            # Note: "parameters" at this point of the loop corresponds to Φ_{i-1}
-            logits = self._forward(images, parameters) # Corresponds to f(x_support, Φ_{i-1}) = logits
-            loss = F.cross_entropy(logits, labels)  # Corresponds to L^suppport_{i-1}=L(y_support, logits)=L(y_support,f(x_support, Φ_{i-1}))
+        inner_optimizer = torch.optim.Adam(temp_model.parameters(), lr=0.0001) #inner learnin rate todo change
 
-            # From TA slides: If you want to backpropagate through the gradient later: torch.autograd.grad(outputs, inputs, create_graph=True)
-            if train:
-                gradients = autograd.grad(loss, parameters.values(), create_graph=True) # Corresponds to ∇_{Φ_{i-1}}L^suppport_{i-1}
-            else:
-                gradients = autograd.grad(loss, parameters.values(), create_graph=False) # Corresponds to ∇_{Φ_{i-1}}L^suppport_{i-1}
+        settings = importlib.import_module('lib.train.admin.local').EnvironmentSettings()
 
-            # Update parameters to be Φ_{i} <-- Φ_{i-1} - alpha * ∇_{Φ_{i-1}}L^suppport_{i-1} = Φ_{i-1} - alpha * Gradients calculated on Φ_{i-1}
-            for idx, key in enumerate(parameters.keys()):
-                parameters[key] = parameters[key] - self._inner_lrs[key] * gradients[idx]
+        for step in range(self._num_inner_steps):
 
-            accuracies.append(util.score(logits, labels)) # support set accuracy from 0 to (L-1)
+            # Set up the trainer for the temporary model
+            trainer = LTRTrainer(
+                actor=temp_model, 
+                loaders=[images], 
+                optimizer=inner_optimizer ,
+                settings=settings, 
+                lr_scheduler=None, 
+                use_amp=False
+            )
 
-        L_logits = self._forward(images, parameters) # fully updated model f(x_support, Φ_L)
-        L_support_set_accuracy = util.score(L_logits, labels) # support set accuracy over the course of the inner loop
-        accuracies.append(L_support_set_accuracy)
+            # Run the training cycle with the current inner loop step's data
+            trainer.cycle_dataset(images)
 
-        return parameters, accuracies, gradients
+            # # Calculate the loss and update parameters
+            # loss = trainer.stats['loss']  # Assuming loss is stored in trainer's stats
+            # self._optimizer.zero_grad()
+            # loss.backward()
 
-    def _outer_step(self, task_batch, train):
+            # # Update parameters using gradient descent with individual inner learning rates
+            # for name, param in temp_model.named_parameters():
+            #     if name in self._inner_lrs:
+            #         parameters[name] = parameters[name] - self._inner_lrs[name] * param.grad
+
+        # Calculate and record the accuracy
+        accuracy = score(temp_model(images), labels) #TODO check
+        accuracies.append(accuracy)
+
+        return parameters, accuracies
+
+   
+
+    def _outer_step(self, images, labels, train):
         """Computes the MAML loss and metrics on a batch of tasks.
 
         Args:
-            task_batch (tuple): batch of tasks from an Omniglot DataLoader
-                        task_batch is a list of 16 tasks. For each task, I have images_support, labels_support, images_query, labels_query
-            train (bool): whether we are training or evaluating
+            images (Tensor): Batch of images for all tasks, shape (K+num_query, num_videos, num_sports, rgb_image_size)
+            labels (Tensor): Batch of labels for all tasks, shape (K+num_query, num_videos, num_sports, max_number_players_on_screen, 6)
+            train (bool): Whether we are training or evaluating
 
         Returns:
-            outer_loss (Tensor): mean MAML loss over the batch, scalar
-            accuracies_support (ndarray): support set accuracy over the
-                course of the inner loop, averaged over the task batch
-                shape (num_inner_steps + 1,)
-            accuracy_query (float): query set accuracy of the adapted
-                parameters, averaged over the task batch
+            outer_loss (Tensor): Mean MAML loss over the batch, scalar
+            accuracies_support (ndarray): Support set accuracy over the course of the inner loop, averaged over the task batch, shape (num_inner_steps + 1,)
+            accuracy_query (float): Query set accuracy of the adapted parameters, averaged over the task batch
         """
         outer_loss_batch = []
         accuracies_support_batch = []
         accuracy_query_batch = []
 
-        # For every task in the batch of tasks....
-        for task in task_batch:
-            images_support, labels_support, images_query, labels_query = task
+        for task_idx in range(args.batch_size):  # Iterate over tasks in the batch
+            # print("task num:", task_idx+1)
+            images_task = images[task_idx]  # Images for the current task
+            labels_task = labels[task_idx]  # Labels for the current task
+
+            images_support = images_task[:args.num_support] 
+            labels_support = labels_task[:args.num_support] 
+            images_query = images_task[args.num_support:]  
+            labels_query = labels_task[args.num_support:]   
+            
+            # print("\nSupport Set Shape:", images_support.shape)
+            # print("Support Label Shape:", labels_support.shape)
+            # print("Query Set Shape:", images_query.shape)
+            # print("Query Label Shape:", labels_query.shape)
+
+
             images_support = images_support.to(self.device)
             labels_support = labels_support.to(self.device)
             images_query = images_query.to(self.device)
             labels_query = labels_query.to(self.device)
 
-            ### START CODE HERE ###
-            # TODO: finish implementing this method.
-            # For a given task, use the _inner_loop method to adapt for
-            # _num_inner_steps steps, then compute the MAML loss and other
-            # metrics. Reminder you can replace gradients with _ when calling
-            # _inner_loop.
-            # Use F.cross_entropy to compute classification losses.
-            # Use util.score to compute accuracies.
-            # Make sure to populate outer_loss_batch, accuracies_support_batch,
-            # and accuracy_query_batch.
-            # support accuracy: The first element (index 0) should be the accuracy before any steps are taken.
+            adapted_params, accuracies_support, _ = self._inner_loop(images_support, labels_support, train)
+            logits_query = self._forward(images_query, adapted_params)
+            
+            # Initialize lists to store losses and accuracies for each output component
+            accuracy_query = []
+            player_id_logits, bb_left_logits, bb_top_logits, bb_width_logits, bb_height_logits = logits_query
 
-            # Compute the adapted parameters Φ_L by calling the inner loop (adaptation) for a task T_i and L inner loop steps
-            parameters,  support_set_accuracies, _ = self._inner_loop(images_support, labels_support, train)
+            # print("Logits:")
+            # print(f"player id {player_id_logits.shape}")
+            # print(f"bb left {bb_left_logits.shape}")
+            # print(f"bb top {bb_top_logits.shape}")
+            # print(f"bb width {bb_width_logits.shape}")
+            # print(f"bb height {bb_height_logits.shape}")
 
-            # From HW1: "To optimize θ in the outer loop, we use the same loss function (6) applied on the adapted parameters and the query data:"
-            logits_query = self._forward(images_query, parameters)
-            loss_query = F.cross_entropy(logits_query, labels_query)
-            accuracy_query = util.score(logits_query, labels_query)
+            # print("labels_query:", labels_query.shape)
+            labels_query = labels_query.squeeze(1)
 
-            accuracies_support_batch.append(support_set_accuracies) # Append the support set accuracies for for task T_i to the batch
-            outer_loss_batch.append(loss_query) # Append the MAML losses over the batch for task T_i to the batch
-            accuracy_query_batch.append(accuracy_query) # Append the query set accuracies of the adapted parameters for task T_i to the batch
+            frame_id_labels = labels_query[..., 0]
+            player_id_labels = labels_query[..., 1]
+            bb_left_labels = labels_query[..., 2]
+            bb_top_labels = labels_query[..., 3]
+            bb_width_labels = labels_query[..., 4]
+            bb_height_labels = labels_query[..., 5]
 
-            ### END CODE HERE ###
+
+            # print("labels:")
+            # print(f"player id {player_id_labels.shape}")
+            # print(f"bb left {bb_left_labels.shape}")
+            # print(f"bb top {bb_top_labels.shape}")
+            # print(f"bb width {bb_width_labels.shape}")
+            # print(f"bb height {bb_height_labels.shape}")
+
+
+            player_id_loss = F.cross_entropy(player_id_logits, player_id_labels)
+            bb_left_loss = F.mse_loss(bb_left_logits, bb_left_labels)
+            bb_top_loss = F.mse_loss(bb_top_logits, bb_top_labels)
+            bb_width_loss = F.mse_loss(bb_width_logits, bb_width_labels)
+            bb_height_loss = F.mse_loss(bb_height_logits, bb_height_labels)
+
+            loss = (player_id_loss + bb_left_loss + bb_top_loss + bb_width_loss + bb_height_loss)/5
+
+
+            predicted_bboxes = torch.stack([bb_left_logits, bb_top_logits, bb_width_logits, bb_height_logits], dim=-1)
+            true_bboxes = torch.stack([bb_left_labels, bb_top_labels, bb_width_labels, bb_height_labels], dim=-1)
+
+            # Calculate accuracy for each component
+            accuracy_query = {
+            "player_id": util.calculate_accuracy(player_id_logits, player_id_labels),
+            "bbox": util.calculate_iou(predicted_bboxes, true_bboxes)
+            }
+            # print(f"outer Accuracies : {accuracy_query}")
+
+            outer_loss_batch.append(loss)
+            accuracies_support_batch.append(accuracies_support)
+            accuracy_query_batch.append(accuracy_query)
+
+
         outer_loss = torch.mean(torch.stack(outer_loss_batch))
-        accuracies_support = np.mean(accuracies_support_batch, axis=0)
-        accuracy_query = np.mean(accuracy_query_batch)
-        return outer_loss, accuracies_support, accuracy_query
+
+
+        # Initialize dictionaries to accumulate accuracy values for each subtask
+        accumulated_pre_adapt_accuracies = {
+            "player_id": [],
+             "bbox": []
+        }
+
+        accumulated_post_adapt_accuracies = {
+            "player_id": [],
+             "bbox": []
+        }
+
+        # Iterate through the list of dictionaries and accumulate accuracy values
+        for key in accumulated_pre_adapt_accuracies:
+            # Calculate the mean accuracy for the current subtask key
+            mean_pre_adapt_accuracy = np.mean([item[key] for item in accuracies_support_batch[0]])  # Index 0 for pre-adaptation
+            mean_post_adapt_accuracy = np.mean([item[key] for item in accuracies_support_batch[-1]])  # Index -1 for post-adaptation
+            accumulated_pre_adapt_accuracies[key].append(mean_pre_adapt_accuracy)
+            accumulated_post_adapt_accuracies[key].append(mean_post_adapt_accuracy)
+
+        # Convert the accumulated accuracy values to NumPy arrays and calculate the mean accuracy for each subtask
+        pre_adapt_accuracy_mean = {
+            key: np.mean(np.array(accumulated_pre_adapt_accuracies[key]), axis=0) for key in accumulated_pre_adapt_accuracies
+        }
+
+        post_adapt_accuracy_mean = {
+            key: np.mean(np.array(accumulated_post_adapt_accuracies[key]), axis=0) for key in accumulated_post_adapt_accuracies
+        }
+
+        # print(f"Pre-adaptation accuracies: {pre_adapt_accuracy_mean}")
+        # print(f"Post-adaptation accuracies: {post_adapt_accuracy_mean}")
+
+
+
+        accumulated_accuracies = {
+            "player_id": [],
+             "bbox": []
+        }
+
+        # Iterate through the list of dictionaries and accumulate accuracy values
+        for acc in accuracy_query_batch:
+            for key in accumulated_accuracies:
+                # Calculate the mean accuracy for the current subtask key
+                mean_accuracy = acc[key]  
+                accumulated_accuracies[key].append(mean_accuracy)
+
+        # Convert the accumulated accuracy values to NumPy arrays and calculate the mean accuracy for each subtask
+        accuracy_query_mean = {
+            key: np.mean(np.array(accumulated_accuracies[key]), axis=0) for key in accumulated_accuracies
+        }
+
+        # print(f" query accuracies: {accuracy_query_mean}")
+
+        return outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query_mean
+    
+    def maml_train(self, dataloader_meta_train, dataloader_meta_val, writer):
+            """Train the MAML.
+
+            Consumes dataloader_meta_train to optimize MAML meta-parameters
+            while periodically validating on dataloader_meta_val, logging metrics, and
+            saving checkpoints.
+
+            Args:
+                dataloader_meta_train (DataLoader): loader for train tasks
+                dataloader_meta_val (DataLoader): loader for validation tasks
+                writer (SummaryWriter): TensorBoard logger
+            """
+            print(f'Starting training at iteration {self._start_train_step}.')
+
+            for i_step, (images, labels, sports_order) in tqdm(enumerate(dataloader_meta_train, start=self._start_train_step), total=args.num_train_iterations):
+                if i_step >= args.num_train_iterations:
+                    break
+                # print(f"Train Iteration: {i_step + 1}/{args.num_train_iterations}")
+
+                # if (i_step + 1) % 2 == 0:
+                self._optimizer.step()
+                self._optimizer.zero_grad()
+                outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query = (
+                    self._outer_step(images, labels, train=True)
+                )
+                # outer_loss /= 2
+                outer_loss.backward()
+                self._optimizer.step()
+
+                
+
+                # Write loss value to TensorBoard
+                writer.add_scalar('loss/val', outer_loss.item(), i_step)
+
+                # Write pre-adaptation support accuracies to TensorBoard
+                for key, value in pre_adapt_accuracy_mean.items():
+                    writer.add_scalar(f'train_accuracy/pre_adapt_support/{key}', value, i_step)
+
+                # Write post-adaptation support accuracies to TensorBoard
+                for key, value in post_adapt_accuracy_mean.items():
+                    writer.add_scalar(f'train_accuracy/post_adapt_support/{key}', value, i_step)
+
+                # Write post-adaptation query accuracies to TensorBoard
+                for key, value in accuracy_query.items():
+                    writer.add_scalar(f'train_accuracy/post_adapt_query/{key}', value, i_step)
+
+
+                
+                if i_step % VAL_INTERVAL == 0:
+                    # print("\nIn val interval check")
+                    losses = []
+                    val_accuracies_pre_adapt_support = {}
+                    val_accuracies_post_adapt_support = {}
+                    val_accuracies_post_adapt_query = {}
+
+                    # Iterate through validation batches
+                    for batch_idx, val_batch in enumerate(dataloader_meta_val):
+                        if batch_idx >= args.meta_val_iterations:
+                            break
+                        # print(f"Batch {batch_idx + 1}/{args.meta_val_iterations}")
+                        val_images, val_labels, _ = val_batch  # Unpack the batch
+
+                        val_outer_loss, val_pre_adapt_accuracy_mean, val_post_adapt_accuracy_mean, val_accuracy_query = (
+                            self._outer_step(val_images, val_labels, train=False)
+                        )
+                        losses.append(val_outer_loss.item())
+
+                        # Collect pre-adaptation support accuracies
+                        for key, value in val_pre_adapt_accuracy_mean.items():
+                            if key not in val_accuracies_pre_adapt_support:
+                                val_accuracies_pre_adapt_support[key] = []
+                            val_accuracies_pre_adapt_support[key].append(value)
+
+                        # Collect post-adaptation support accuracies
+                        for key, value in val_post_adapt_accuracy_mean.items():
+                            if key not in val_accuracies_post_adapt_support:
+                                val_accuracies_post_adapt_support[key] = []
+                            val_accuracies_post_adapt_support[key].append(value)
+
+                        # Collect post-adaptation query accuracies
+                        for key, value in val_accuracy_query.items():
+                            if key not in val_accuracies_post_adapt_query:
+                                val_accuracies_post_adapt_query[key] = []
+                            val_accuracies_post_adapt_query[key].append(value)
+
+                    # Calculate mean loss and accuracies over validation batches
+                    val_mean_loss = np.mean(losses)
+                    
+                    val_mean_accuracies_pre_adapt_support = {}
+                    for key, value_list in val_accuracies_pre_adapt_support.items():
+                        val_mean_accuracies_pre_adapt_support[key] = np.mean(value_list)
+
+                    val_mean_accuracies_post_adapt_support = {}
+                    for key, value_list in val_accuracies_post_adapt_support.items():
+                        val_mean_accuracies_post_adapt_support[key] = np.mean(value_list)
+
+                    val_mean_accuracies_post_adapt_query = {}
+                    for key, value_list in val_accuracies_post_adapt_query.items():
+                        val_mean_accuracies_post_adapt_query[key] = np.mean(value_list)
+
+                    # Write validation results to TensorBoard
+                    writer.add_scalar('loss/val', val_mean_loss, i_step)
+
+                    for key, value in val_mean_accuracies_pre_adapt_support.items():
+                        writer.add_scalar(f'val_accuracy/val_pre_adapt_support/{key}', value, i_step)
+
+                    for key, value in val_mean_accuracies_post_adapt_support.items():
+                        writer.add_scalar(f'val_accuracy/val_post_adapt_support/{key}', value, i_step)
+
+                    for key, value in val_mean_accuracies_post_adapt_query.items():
+                        writer.add_scalar(f'val_accuracy/val_post_adapt_query/{key}', value, i_step)
+
+                    # print("\n\nDONE WITH CHECK")
+                    
+
+                if i_step % SAVE_INTERVAL == 0:
+                    print(torch.cuda.memory_summary())
+                    self._save(i_step)
+
+
+
 
     def train(self, dataloader_meta_train, dataloader_meta_val, writer):
         """Train the MAML.
@@ -513,34 +679,50 @@ def main(args):
     if not args.test:
         num_training_tasks = args.batch_size * (args.num_train_iterations -
                                                 args.checkpoint_step - 1)
-        print(
-            f'Training on {num_training_tasks} tasks with composition: '
-            f'num_way={args.num_way}, '
-            f'num_support={args.num_support}, '
-            f'num_query={args.num_query}'
+
+        print("Loading training data.. ")
+        meta_train_iterable = DataGenerator(
+            args.num_videos,
+            args.num_support + args.num_query,
+            batch_type="train",
+            cache=False,
+            generate_new_tasks=True
+        )
+        meta_train_loader = iter(
+            torch.utils.data.DataLoader(
+                meta_train_iterable,
+                batch_size=args.batch_size,
+                num_workers=args.num_workers,
+                pin_memory=True,
+            )
         )
 
-        dataloader_meta_train = omniglot.get_omniglot_dataloader(
-            'train',
-            args.batch_size,
-            args.num_way,
-            args.num_support,
-            args.num_query,
-            num_training_tasks,
-            args.num_workers
+        print("Loading validation data.. ")
+        meta_val_iterable = DataGenerator(
+            args.num_videos,
+            args.num_support + args.num_query,
+            batch_type="val",
+            cache=False,
+            generate_new_tasks=True
         )
-        dataloader_meta_val = omniglot.get_omniglot_dataloader(
-            'val',
-            args.batch_size,
-            args.num_way,
-            args.num_support,
-            args.num_query,
-            args.batch_size * 4,
-            args.num_workers
+        meta_val_loader = iter(
+            torch.utils.data.DataLoader(
+                meta_val_iterable,
+                batch_size=args.batch_size,
+                num_workers=args.num_workers,
+                pin_memory=True,
+            )
         )
-        maml.train(
-            dataloader_meta_train,
-            dataloader_meta_val,
+
+        print(f'Training on {num_training_tasks} tasks with composition: '
+                    f'num_way={args.num_way}, '
+                    f'num_support={args.num_support}, '
+                    f'num_query={args.num_query}'
+                )
+
+        maml.maml_train(
+            meta_train_loader,
+            meta_val_loader,
             writer
         )
     else:
@@ -570,6 +752,8 @@ if __name__ == '__main__':
                         help='number of classes in a task')
     parser.add_argument('--num_support', type=int, default=1,
                         help='number of support examples per class in a task')
+    parser.add_argument('--num_videos', type=int, default=1,
+                         help='number of videos to include in the support set')
     parser.add_argument('--num_query', type=int, default=15,
                         help='number of query examples per class in a task')
     parser.add_argument('--num_inner_steps', type=int, default=1,
