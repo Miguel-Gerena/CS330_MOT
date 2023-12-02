@@ -105,7 +105,7 @@ def make_parser():
     parser.add_argument(
         "--fp16",
         dest="fp16",
-        default=True,
+        default=False,
         action="store_true",
         help="Adopting mix precision evaluating.",
     )
@@ -146,14 +146,15 @@ def make_parser():
     parser.add_argument('--num_videos', type=int, default=1, help='number of videos to include in the support set')
     parser.add_argument('--num_way', type=int, default=23, help='number of classes in a task')
     parser.add_argument('--num_sports', type=int, default=3, help='number of sports')
-    parser.add_argument('--num_support', type=int, default=6, help='number of support examples per class in a task')
+    parser.add_argument('--num_support', type=int, default=3, help='number of support examples per class in a task')
     parser.add_argument('--num_query', type=int, default=3, help='number of query examples per class in a task')
-    parser.add_argument('--meta_batch_size', type=int, default=10, help='number of tasks per outer-loop update')
-    parser.add_argument('--meta_train_iterations', type=int, default=200, help='number of baches of tasks to iterate through for train')
-    parser.add_argument('--meta_val_iterations', type=int, default=20, help='number of baches of tasks to iterate through for val per every check')
+    parser.add_argument('--meta_batch_size', type=int, default=6, help='number of tasks per outer-loop update')
+    # parser.add_argument('--test_batch_size', type=int, default=6, help='number of tasks per outer-loop update')
+    parser.add_argument('--meta_train_iterations', type=int, default=2000000, help='number of baches of tasks to iterate through for train')
+    parser.add_argument('--meta_val_iterations', type=int, default=5, help='number of baches of tasks to iterate through for val per every check')
     parser.add_argument('--num_inner_steps', type=int, default=1, help='number of inner-loop updates')
-    parser.add_argument('--inner_lr', type=float, default=0.04, help='inner-loop learning rate initialization')
-    parser.add_argument('--learn_inner_lrs', default=False, action='store_true', help='whether to optimize inner-loop learning rates')
+    parser.add_argument('--inner_lr', type=float, default=0.004, help='inner-loop learning rate initialization')
+    parser.add_argument('--learn_inner_lrs', default=True, action='store_true', help='whether to optimize inner-loop learning rates')
     parser.add_argument('--outer_lr', type=float, default=0.001, help='outer-loop learning rate')
     parser.add_argument('--test', default=False, action='store_true', help='train or test')
     parser.add_argument('--num_workers', type=int, default=4, help=('needed to specify dataloader'))
@@ -381,7 +382,7 @@ class MAML:
 
         # self.inner_lr_dict = {name: self._inner_lrs for name, param in self.model.named_parameters()}
         # self._inner_lrs = {k: torch.tensor(inner_lr, requires_grad=learn_inner_lrs) for k in self.model.named_parameters()}
-        self._inner_lrs = {name: torch.tensor(inner_lr, requires_grad=False) for name, _ in self.model.named_parameters()}
+        self._inner_lrs = {name: torch.tensor(inner_lr, requires_grad=learn_inner_lrs) for name, _ in self.model.named_parameters()}
 
 
     def _forward(self, images):
@@ -406,7 +407,7 @@ class MAML:
 
                 # Convert the list of frames to a tensor
                 video_frames_tensor = images[:, video_idx, sport_idx]
-                # video_frames_tensor = video_frames_tensor.reshape(-1, 3, int(720 * 0.25), int(1280 * 0.25))
+                video_frames_tensor = video_frames_tensor.reshape(-1, 3, int(720 * 0.25), int(1280 * 0.25))
                 video_frames_tensor.to(args.device)
 
                 # Process the batch of frames through the model
@@ -496,7 +497,7 @@ class MAML:
         outer_loss_batch = []
         accuracies_support_batch = []
         accuracy_query_batch = []
-
+ 
         for task_idx in range(args.meta_batch_size):  # Iterate over tasks in the batch
             images_task = images[task_idx]  # Images for the current task
             labels_task = labels[task_idx]  # Labels for the current task
@@ -598,11 +599,14 @@ class MAML:
             dataloader_meta_val (DataLoader): loader for validation tasks
             writer (SummaryWriter): TensorBoard logger
         """
-        # torch.autograd.set_detect_anomaly(True)
+        torch.autograd.set_detect_anomaly(True)
         best_val_accuracy = float('-inf')
         last_best_step = 0 
+        i = 0
+        divisor = 32 // args.meta_batch_size
         print(f'Starting training at iteration {self._start_train_step}.')
         for i_step, (images, labels, sports_order) in tqdm(enumerate(dataloader_meta_train, start=self._start_train_step), total=args.meta_train_iterations):
+            i += 1
             if i_step >= args.meta_train_iterations:
                 break
 
@@ -610,10 +614,12 @@ class MAML:
             outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query = (
                 self._outer_step(images, labels, train=True)
             )
-
+            # outer_loss /= divisor
             outer_loss.backward()  
+            # if i % divisor == 0:
             self._optimizer.step()
             self._optimizer.zero_grad()
+            # i = 0
 
             # Write loss value to TensorBoard
             writer.add_scalar('loss/val', outer_loss.item(), i_step)
@@ -641,6 +647,7 @@ class MAML:
 
                 # Iterate through validation batches
                 for batch_idx, val_batch in enumerate(dataloader_meta_val):
+                    # torch.cuda.empty_cache()
                     if batch_idx >= args.meta_val_iterations:
                         break
                     # print(f"Batch {batch_idx + 1}/{args.meta_val_iterations}")
@@ -707,7 +714,7 @@ class MAML:
                     last_best_step = i_step
                     self._save(i_step)  # Save the model checkpoint
                     print(f'Saved new best checkpoint with validation accuracy: {best_val_accuracy:.4f}')
-                torch.cuda.empty_cache()
+            
                 
             if i_step - last_best_step >= 100:
                 print("Stopping training - 100 steps have passed since the last best accuracy")
@@ -815,7 +822,7 @@ def main(exp, args):
     # log_dir = args.log_dir
     # if log_dir is None:
     log_dir = f"logs/{args.model}/{args.experiment_name}/Bway_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}hd_{NUM_HIDDEN_CHANNELS}.cvl_{NUM_CONV_LAYERS}"  # pylint: disable=line-too-long
-
+    logger.info(f"Run parameters {log_dir}")
     writer = tensorboard.SummaryWriter("logs/test")
 
     if args.conf is not None:
@@ -929,6 +936,35 @@ def main(exp, args):
     elif args.fine_tune:
         logger.error(f"ERROR: Model '{args.model}' is not implemented for fine-tuning")
         return
+
+    latest_checkpoint_path = find_latest_checkpoint(log_dir)
+    if latest_checkpoint_path:
+        print(f"Loading fine tuned checkpoint: {latest_checkpoint_path}")
+        checkpoint = torch.load(latest_checkpoint_path, map_location=args.device)
+        extractor_model.load_state_dict(checkpoint['model_state_dict'])
+        print("Fine tuned checkpoint loaded successfully.")
+    else:
+        print("No fine tuned checkpoints found.")
+
+    extractor_model.eval()
+    predictor = Predictor(model, exp, trt_file, decoder, args.device, args.fp16)
+    extractor = FeatureExtractor(model=extractor_model, device='cuda') 
+    # extractor = FeatureExtractor(model=extractor_model, model_path = 'checkpoints/sports_model.pth.tar-60', device='cuda')   
+
+
+    dir = args.path  
+    if os.path.exists(os.path.join(dir, 'img1')):
+        process_sequence(predictor, extractor, os.path.join(dir, 'img1'), vis_folder, args)
+    else:
+        # Otherwise, assume it contains subdirectories, each representing a video sequence
+        sequence_dirs = [os.path.join(dir, f) for f in os.listdir(dir) if os.path.isdir(os.path.join(dir, f))]
+
+        for seq_dir in sequence_dirs:
+            img_dir = os.path.join(seq_dir, 'img1')
+            if os.path.exists(img_dir):
+                process_sequence(predictor, extractor, img_dir, vis_folder, args)
+            else:
+                logger.error(f"'img1' subfolder not found in {seq_dir}")
     
 
 if __name__ == "__main__":
