@@ -180,18 +180,8 @@ class MAML:
             # Run the training cycle with the current inner loop step's data
             trainer.cycle_dataset(images)
 
-            # # Calculate the loss and update parameters
-            # loss = trainer.stats['loss']  # Assuming loss is stored in trainer's stats
-            # self._optimizer.zero_grad()
-            # loss.backward()
-
-            # # Update parameters using gradient descent with individual inner learning rates
-            # for name, param in temp_model.named_parameters():
-            #     if name in self._inner_lrs:
-            #         parameters[name] = parameters[name] - self._inner_lrs[name] * param.grad
-
         # Calculate and record the accuracy
-        accuracy = score(temp_model(images), labels) #TODO check
+        accuracy = score(temp_model(images), labels) #TODO 
         accuracies.append(accuracy)
 
         return parameters, accuracies
@@ -220,62 +210,16 @@ class MAML:
             images_task = images[task_idx]  # Images for the current task
             labels_task = labels[task_idx]  # Labels for the current task
 
-            images_support = images_task[:args.num_support] 
-            labels_support = labels_task[:args.num_support] 
-            images_query = images_task[args.num_support:]  
-            labels_query = labels_task[args.num_support:]   
-            
-            # print("\nSupport Set Shape:", images_support.shape)
-            # print("Support Label Shape:", labels_support.shape)
-            # print("Query Set Shape:", images_query.shape)
-            # print("Query Label Shape:", labels_query.shape)
+            images_support = images_task[:args.num_support].to(self.device) 
+            labels_support = labels_task[:args.num_support].to(self.device) 
+            images_query = images_task[args.num_support:].to(self.device)  
+            labels_query = labels_task[args.num_support:].to(self.device)   
 
-
-            images_support = images_support.to(self.device)
-            labels_support = labels_support.to(self.device)
-            images_query = images_query.to(self.device)
-            labels_query = labels_query.to(self.device)
-
-            adapted_params, accuracies_support, _ = self._inner_loop(images_support, labels_support, train)
+            adapted_params, accuracies_support, _ = self._inner_loop(images_support, labels_support, train) 
             logits_query = self._forward(images_query, adapted_params)
             
-            # Initialize lists to store losses and accuracies for each output component
-            accuracy_query = []
-            player_id_logits, bb_left_logits, bb_top_logits, bb_width_logits, bb_height_logits = logits_query
-
-            # print("Logits:")
-            # print(f"player id {player_id_logits.shape}")
-            # print(f"bb left {bb_left_logits.shape}")
-            # print(f"bb top {bb_top_logits.shape}")
-            # print(f"bb width {bb_width_logits.shape}")
-            # print(f"bb height {bb_height_logits.shape}")
-
-            # print("labels_query:", labels_query.shape)
-            labels_query = labels_query.squeeze(1)
-
-            frame_id_labels = labels_query[..., 0]
-            player_id_labels = labels_query[..., 1]
-            bb_left_labels = labels_query[..., 2]
-            bb_top_labels = labels_query[..., 3]
-            bb_width_labels = labels_query[..., 4]
-            bb_height_labels = labels_query[..., 5]
-
-
-            # print("labels:")
-            # print(f"player id {player_id_labels.shape}")
-            # print(f"bb left {bb_left_labels.shape}")
-            # print(f"bb top {bb_top_labels.shape}")
-            # print(f"bb width {bb_width_labels.shape}")
-            # print(f"bb height {bb_height_labels.shape}")
-
-
-            player_id_loss = F.cross_entropy(player_id_logits, player_id_labels)
-            bb_left_loss = F.mse_loss(bb_left_logits, bb_left_labels)
-            bb_top_loss = F.mse_loss(bb_top_logits, bb_top_labels)
-            bb_width_loss = F.mse_loss(bb_width_logits, bb_width_labels)
-            bb_height_loss = F.mse_loss(bb_height_logits, bb_height_labels)
-
-            loss = (player_id_loss + bb_left_loss + bb_top_loss + bb_width_loss + bb_height_loss)/5
+            labels = data['label'].view(-1)  # (batch, ) 0 or 1
+            loss = self.loss_weight["cls"] * self.objective['cls'](pred_dict["pred_logits"].view(-1), labels)
 
 
             predicted_bboxes = torch.stack([bb_left_logits, bb_top_logits, bb_width_logits, bb_height_logits], dim=-1)
@@ -472,110 +416,110 @@ class MAML:
 
 
 
-    def train(self, dataloader_meta_train, dataloader_meta_val, writer):
-        """Train the MAML.
+    # def train(self, dataloader_meta_train, dataloader_meta_val, writer):
+    #     """Train the MAML.
 
-        Consumes dataloader_meta_train to optimize MAML meta-parameters
-        while periodically validating on dataloader_meta_val, logging metrics, and
-        saving checkpoints.
+    #     Consumes dataloader_meta_train to optimize MAML meta-parameters
+    #     while periodically validating on dataloader_meta_val, logging metrics, and
+    #     saving checkpoints.
 
-        Args:
-            dataloader_meta_train (DataLoader): loader for train tasks
-            dataloader_meta_val (DataLoader): loader for validation tasks
-            writer (SummaryWriter): TensorBoard logger
-        """
-        print(f'Starting training at iteration {self._start_train_step}.')
-        for i_step, task_batch in enumerate(
-                dataloader_meta_train,
-                start=self._start_train_step
-        ):
-            self._optimizer.zero_grad()
-            outer_loss, accuracies_support, accuracy_query = (
-                self._outer_step(task_batch, train=True)
-            )
-            outer_loss.backward()
-            self._optimizer.step()
+    #     Args:
+    #         dataloader_meta_train (DataLoader): loader for train tasks
+    #         dataloader_meta_val (DataLoader): loader for validation tasks
+    #         writer (SummaryWriter): TensorBoard logger
+    #     """
+    #     print(f'Starting training at iteration {self._start_train_step}.')
+    #     for i_step, task_batch in enumerate(
+    #             dataloader_meta_train,
+    #             start=self._start_train_step
+    #     ):
+    #         self._optimizer.zero_grad()
+    #         outer_loss, accuracies_support, accuracy_query = (
+    #             self._outer_step(task_batch, train=True)
+    #         )
+    #         outer_loss.backward()
+    #         self._optimizer.step()
 
-            if i_step % LOG_INTERVAL == 0:
-                print(
-                    f'Iteration {i_step}: '
-                    f'loss: {outer_loss.item():.3f}, '
-                    f'pre-adaptation support accuracy: '
-                    f'{accuracies_support[0]:.3f}, '
-                    f'post-adaptation support accuracy: '
-                    f'{accuracies_support[-1]:.3f}, '
-                    f'post-adaptation query accuracy: '
-                    f'{accuracy_query:.3f}'
-                )
-                writer.add_scalar('loss/train', outer_loss.item(), i_step)
-                writer.add_scalar(
-                    'train_accuracy/pre_adapt_support',
-                    accuracies_support[0],
-                    i_step
-                )
-                writer.add_scalar(
-                    'train_accuracy/post_adapt_support',
-                    accuracies_support[-1],
-                    i_step
-                )
-                writer.add_scalar(
-                    'train_accuracy/post_adapt_query',
-                    accuracy_query,
-                    i_step
-                )
+    #         if i_step % LOG_INTERVAL == 0:
+    #             print(
+    #                 f'Iteration {i_step}: '
+    #                 f'loss: {outer_loss.item():.3f}, '
+    #                 f'pre-adaptation support accuracy: '
+    #                 f'{accuracies_support[0]:.3f}, '
+    #                 f'post-adaptation support accuracy: '
+    #                 f'{accuracies_support[-1]:.3f}, '
+    #                 f'post-adaptation query accuracy: '
+    #                 f'{accuracy_query:.3f}'
+    #             )
+    #             writer.add_scalar('loss/train', outer_loss.item(), i_step)
+    #             writer.add_scalar(
+    #                 'train_accuracy/pre_adapt_support',
+    #                 accuracies_support[0],
+    #                 i_step
+    #             )
+    #             writer.add_scalar(
+    #                 'train_accuracy/post_adapt_support',
+    #                 accuracies_support[-1],
+    #                 i_step
+    #             )
+    #             writer.add_scalar(
+    #                 'train_accuracy/post_adapt_query',
+    #                 accuracy_query,
+    #                 i_step
+    #             )
 
-            if i_step % VAL_INTERVAL == 0:
-                losses = []
-                accuracies_pre_adapt_support = []
-                accuracies_post_adapt_support = []
-                accuracies_post_adapt_query = []
-                for val_task_batch in dataloader_meta_val:
-                    outer_loss, accuracies_support, accuracy_query = (
-                        self._outer_step(val_task_batch, train=False)
-                    )
-                    losses.append(outer_loss.item())
-                    accuracies_pre_adapt_support.append(accuracies_support[0])
-                    accuracies_post_adapt_support.append(accuracies_support[-1])
-                    accuracies_post_adapt_query.append(accuracy_query)
-                loss = np.mean(losses)
-                accuracy_pre_adapt_support = np.mean(
-                    accuracies_pre_adapt_support
-                )
-                accuracy_post_adapt_support = np.mean(
-                    accuracies_post_adapt_support
-                )
-                accuracy_post_adapt_query = np.mean(
-                    accuracies_post_adapt_query
-                )
-                print(
-                    f'Validation: '
-                    f'loss: {loss:.3f}, '
-                    f'pre-adaptation support accuracy: '
-                    f'{accuracy_pre_adapt_support:.3f}, '
-                    f'post-adaptation support accuracy: '
-                    f'{accuracy_post_adapt_support:.3f}, '
-                    f'post-adaptation query accuracy: '
-                    f'{accuracy_post_adapt_query:.3f}'
-                )
-                writer.add_scalar('loss/val', loss, i_step)
-                writer.add_scalar(
-                    'val_accuracy/pre_adapt_support',
-                    accuracy_pre_adapt_support,
-                    i_step
-                )
-                writer.add_scalar(
-                    'val_accuracy/post_adapt_support',
-                    accuracy_post_adapt_support,
-                    i_step
-                )
-                writer.add_scalar(
-                    'val_accuracy/post_adapt_query',
-                    accuracy_post_adapt_query,
-                    i_step
-                )
+    #         if i_step % VAL_INTERVAL == 0:
+    #             losses = []
+    #             accuracies_pre_adapt_support = []
+    #             accuracies_post_adapt_support = []
+    #             accuracies_post_adapt_query = []
+    #             for val_task_batch in dataloader_meta_val:
+    #                 outer_loss, accuracies_support, accuracy_query = (
+    #                     self._outer_step(val_task_batch, train=False)
+    #                 )
+    #                 losses.append(outer_loss.item())
+    #                 accuracies_pre_adapt_support.append(accuracies_support[0])
+    #                 accuracies_post_adapt_support.append(accuracies_support[-1])
+    #                 accuracies_post_adapt_query.append(accuracy_query)
+    #             loss = np.mean(losses)
+    #             accuracy_pre_adapt_support = np.mean(
+    #                 accuracies_pre_adapt_support
+    #             )
+    #             accuracy_post_adapt_support = np.mean(
+    #                 accuracies_post_adapt_support
+    #             )
+    #             accuracy_post_adapt_query = np.mean(
+    #                 accuracies_post_adapt_query
+    #             )
+    #             print(
+    #                 f'Validation: '
+    #                 f'loss: {loss:.3f}, '
+    #                 f'pre-adaptation support accuracy: '
+    #                 f'{accuracy_pre_adapt_support:.3f}, '
+    #                 f'post-adaptation support accuracy: '
+    #                 f'{accuracy_post_adapt_support:.3f}, '
+    #                 f'post-adaptation query accuracy: '
+    #                 f'{accuracy_post_adapt_query:.3f}'
+    #             )
+    #             writer.add_scalar('loss/val', loss, i_step)
+    #             writer.add_scalar(
+    #                 'val_accuracy/pre_adapt_support',
+    #                 accuracy_pre_adapt_support,
+    #                 i_step
+    #             )
+    #             writer.add_scalar(
+    #                 'val_accuracy/post_adapt_support',
+    #                 accuracy_post_adapt_support,
+    #                 i_step
+    #             )
+    #             writer.add_scalar(
+    #                 'val_accuracy/post_adapt_query',
+    #                 accuracy_post_adapt_query,
+    #                 i_step
+    #             )
 
-            if i_step % SAVE_INTERVAL == 0:
-                self._save(i_step)
+    #         if i_step % SAVE_INTERVAL == 0:
+    #             self._save(i_step)
 
     def test(self, dataloader_test):
         """Evaluate the MAML on test tasks.
