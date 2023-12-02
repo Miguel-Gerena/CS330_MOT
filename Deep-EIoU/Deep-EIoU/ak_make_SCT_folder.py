@@ -21,8 +21,8 @@ def copy_results(src_directory, dest_directory, filename_suffix='_results.txt'):
 
 # Set your source and destination directories
 dataset_type = 'train'
-src_directory = 'D:/classes/CS330/project/CS330_MOT/Deep-EIoU/Deep-EIoU/YOLOX_outputs/sportsmot-' + dataset_type
-dest_directory = 'D:/classes/CS330/project/CS330_MOT/Deep-EIoU/SCT/sportsmot-' + dataset_type
+src_directory = 'C:/Users/akayl/Desktop/CS330_MOT/Deep-EIoU/Deep-EIoU/YOLOX_outputs/sportsmot-' + dataset_type
+dest_directory = 'C:/Users/akayl/Desktop/CS330_MOT/Deep-EIoU/SCT/sportsmot-' + dataset_type
 
 print(src_directory)
 print(dest_directory)

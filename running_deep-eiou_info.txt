@@ -6,8 +6,7 @@
                     - args.experiment_name (should be sportsmot-{dataset_type})
                     - args.fine_tune (enter if you want to use maml as fine tuning)
         - run command (creates predicitons)
-                - EX: python tools/maml_demo.py --path 'D:/classes/CS330/project/CS330_MOT/data/sportsmot_publish/dataset/train' --experiment-name sportsmot-train --fine_tune
-                D:/classes/CS330/project/CS330_MOT/data/sportsmot_publish/dataset/train
+                - EX: python tools/maml_demo.py --path C:\\Users\\akayl\\Desktop\\CS330_MOT\\dataset\\train' --experiment-name sportsmot-train --fine_tune
         - see YOLOX_Outputs/{experiment_name} for results! Pretty cool video btw 
 
 2) Stay in Deep-EIoU/Deep-EIoU
