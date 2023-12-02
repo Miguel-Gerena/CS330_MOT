@@ -16,9 +16,9 @@ conda activate DeepEIoU
 # We are using torch==1.13.0 torchvision==0.14.0 torchaudio==0.13.0 with cuda==11.6
 
 cd Deep-EIoU/reid
-pip install -r requirements.txt
+pip install -r requirements.txt 
 pip install cython_bbox
-python setup.py develop
+python setup.py develop 
 cd ..
 ```
 
