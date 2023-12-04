@@ -90,7 +90,7 @@ class DataGenerator(IterableDataset):
         number_of_sports:int=3,
         config:dict={},
         cache:bool=False,
-        generate_new_tasks:bool=False,
+        generate_new_tasks:bool=True,
         normalize_output:bool=True,
         grayscale:bool=False,
         resolution_percent:float=.25,
@@ -108,10 +108,11 @@ class DataGenerator(IterableDataset):
         """
         # This order can be shuffled to create new tasks
         self.sports_order = {"Basketball":0,"Football":1,"Volleyball":2}
+        self.batch_type = batch_type
         self.frames_per_video = frames_per_video
         self.number_of_sports = number_of_sports
         self.config = ConfigParser()
-        self.base_data_folder = config.get("data_folder", f"c:/users/akayl/desktop/CS330_MOT/data/")
+        self.base_data_folder = config.get("data_folder", "D:/classes/CS330/project/CS330_MOT/data_cs/" if os.getlogin() == "DK" else "c:/users/akayl/desktop/CS330_MOT/data_cs/")
         self.data_folder = self.base_data_folder + "/combined_train_val/"
         if grayscale:
             self.img_size = config.get("img_size", (int(720*resolution_percent), int(1280*resolution_percent)))
@@ -207,13 +208,18 @@ class DataGenerator(IterableDataset):
             label is prefilled with -1.  This can be used to filter out rows where there are less than max players on screen
         """
         if self.generate_new_tasks:
-            randomize = np.array(["Basketball", "Football","Volleyball"])
+            if self.batch_type == "train":
+                randomize = np.array(["Basketball", "Football"])
+            else:
+                randomize = np.array(["Volleyball"])
             np.random.shuffle(randomize)
-            self.sports_order = {randomize[i]:i  for i in range(len(randomize))}
+            self.sports_order = {randomize[i]:i for i in range(len(randomize))}
+
 
         samples = defaultdict(list)
         for key, value in self.videoID_by_sport.items():
-            samples[key] = random.sample(value, self.num_videos)
+            if key in randomize:
+                samples[key] = random.sample(value, self.num_videos)
 
         images = np.ones((self.frames_per_video, self.num_videos, self.number_of_sports, self.dim_input), np.float32)
         labels = np.ones((self.frames_per_video, self.num_videos, self.number_of_sports, self.max_number_players_on_screen, self.rows_of_data_in_gt), np.float32) * -1
@@ -242,5 +248,5 @@ class DataGenerator(IterableDataset):
         while True:
             yield self._sample()
 
-# a = DataGenerator(1,3,"train")
+# a = DataGenerator(1,3,"val")
 # a._sample()

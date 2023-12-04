@@ -6,6 +6,7 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 import os.path as osp
 import numpy as np
 import time
+import math
 import cv2
 import torch
 import gc
@@ -16,6 +17,8 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 from torch import nn
 import torch.nn.functional as F
 from torch import autograd
+from torcheval.metrics import MulticlassF1Score, MulticlassAccuracy
+from torcheval.metrics.functional import multiclass_accuracy
 import sys
 sys.path.append('.')
 # sys.path.append('Deep-EIoU/Deep-EIoU/')
@@ -75,7 +78,7 @@ def make_parser():
     parser.add_argument("-n", "--name", type=str, default=None, help="model name")
 
     parser.add_argument(
-        "--path", default=base_path + "/data/sportsmot_publish/dataset/train", help="path to images or video"
+        "--path", default=base_path + "/data_cs/sportsmot_publish/dataset/train", help="path to images or video"
     )
     parser.add_argument(
         "--save_result",
@@ -148,12 +151,14 @@ def make_parser():
     parser.add_argument('--num_sports', type=int, default=3, help='number of sports')
     parser.add_argument('--num_support', type=int, default=3, help='number of support examples per class in a task')
     parser.add_argument('--num_query', type=int, default=3, help='number of query examples per class in a task')
-    parser.add_argument('--meta_batch_size', type=int, default=6, help='number of tasks per outer-loop update')
+    parser.add_argument('--meta_batch_size', type=int, default=5, help='number of tasks per outer-loop update')
+    parser.add_argument('--meta_batch_size_miguel', type=int, default=10, help='number of tasks per outer-loop update')
+
     # parser.add_argument('--test_batch_size', type=int, default=6, help='number of tasks per outer-loop update')
     parser.add_argument('--meta_train_iterations', type=int, default=2000000, help='number of baches of tasks to iterate through for train')
-    parser.add_argument('--meta_val_iterations', type=int, default=5, help='number of baches of tasks to iterate through for val per every check')
+    parser.add_argument('--meta_val_iterations', type=int, default=3, help='number of baches of tasks to iterate through for val per every check')
     parser.add_argument('--num_inner_steps', type=int, default=1, help='number of inner-loop updates')
-    parser.add_argument('--inner_lr', type=float, default=0.004, help='inner-loop learning rate initialization')
+    parser.add_argument('--inner_lr', type=float, default=0.006, help='inner-loop learning rate initialization')
     parser.add_argument('--learn_inner_lrs', default=True, action='store_true', help='whether to optimize inner-loop learning rates')
     parser.add_argument('--outer_lr', type=float, default=0.001, help='outer-loop learning rate')
     parser.add_argument('--test', default=False, action='store_true', help='train or test')
@@ -478,10 +483,13 @@ class MAML:
             }
         accuracies.append(accuracy_dict2)
         # print(accuracies)
+        if train:
+            return accuracies
+        else:
+            return accuracies, self.model.state_dict(), self._optimizer.state_dict()
 
-        return accuracies
 
-    def _outer_step(self, images, labels, train):
+    def _outer_step(self, images, labels, train, f1_score=None):
         """Computes the MAML loss and metrics on a batch of tasks.
 
         Args:
@@ -512,7 +520,12 @@ class MAML:
             images_query = images_query.to(self.device)
             labels_query = labels_query.to(self.device)
 
-            accuracies_support = self._inner_loop(images_support, labels_support, train)
+            if train:
+                accuracies_support = self._inner_loop(images_support, labels_support, train)
+            else:
+                accuracies_support, model_inner_state, optimizer_inner_state = self._inner_loop(images_support, labels_support, train)
+
+
             
             # Initialize lists to store losses and accuracies for each output component
             accuracy_query = []
@@ -532,6 +545,8 @@ class MAML:
             accuracy_query = {
             "player_id": util.calculate_accuracy(player_id_logits, player_id_labels),
             }
+            # if not train:
+            #     f1_score.update(player_id_logits , player_id_labels)
 
             outer_loss_batch.append(player_id_loss)
             accuracies_support_batch.append(accuracies_support)
@@ -584,8 +599,12 @@ class MAML:
 
         # print(f" query accuracies: {accuracy_query_mean}")
 
-        print("Outer loss: ", outer_loss)
-        return outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query_mean
+        print("\nOuter loss: ", outer_loss)
+        if train:
+            return outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query_mean, 
+        else:
+            return outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query_mean, model_inner_state, optimizer_inner_state, f1_score
+
 
     def train(self, dataloader_meta_train, dataloader_meta_val, writer):
         """Train the MAML.
@@ -601,9 +620,14 @@ class MAML:
         """
         torch.autograd.set_detect_anomaly(True)
         best_val_accuracy = float('-inf')
+        best_f1 = float('-inf')
+
         last_best_step = 0 
         i = 0
-        divisor = 32 // args.meta_batch_size
+        divisor = args.meta_batch_size_miguel // args.meta_batch_size
+        f1_score = MulticlassF1Score(num_classes=NUM_CLASSES_FRAME_ID)
+        if os.getlogin() == "DK" and args.meta_batch_size_miguel % args.meta_batch_size != 0 :
+            raise ValueError(f"batch sizes are not divisable.  {args.meta_batch_size_miguel}, {args.meta_batch_size}")
         print(f'Starting training at iteration {self._start_train_step}.')
         for i_step, (images, labels, sports_order) in tqdm(enumerate(dataloader_meta_train, start=self._start_train_step), total=args.meta_train_iterations):
             i += 1
@@ -614,12 +638,22 @@ class MAML:
             outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query = (
                 self._outer_step(images, labels, train=True)
             )
-            # outer_loss /= divisor
-            outer_loss.backward()  
-            # if i % divisor == 0:
-            self._optimizer.step()
-            self._optimizer.zero_grad()
-            # i = 0
+
+            if math.isnan(outer_loss.item()):
+                raise ValueError
+            
+            if os.getlogin() == "DK":
+                outer_loss /= divisor
+                outer_loss.backward()  
+                if i % divisor == 0:
+                    self._optimizer.step()
+                    self._optimizer.zero_grad()
+                    i = 0
+            else:
+                outer_loss.backward()  
+                self._optimizer.step()
+                self._optimizer.zero_grad()
+
 
             # Write loss value to TensorBoard
             writer.add_scalar('loss/val', outer_loss.item(), i_step)
@@ -653,8 +687,8 @@ class MAML:
                     # print(f"Batch {batch_idx + 1}/{args.meta_val_iterations}")
                     val_images, val_labels, _ = val_batch  # Unpack the batch
 
-                    val_outer_loss, val_pre_adapt_accuracy_mean, val_post_adapt_accuracy_mean, val_accuracy_query = (
-                        self._outer_step(val_images, val_labels, train=False)
+                    val_outer_loss, val_pre_adapt_accuracy_mean, val_post_adapt_accuracy_mean, val_accuracy_query, model_inner_state, optimizer_inner_state, f1_score = (
+                        self._outer_step(val_images, val_labels, train=False, f1_score=f1_score)
                     )
                     losses.append(val_outer_loss.item())
 
@@ -704,15 +738,23 @@ class MAML:
                     writer.add_scalar(f'val_accuracy/val_post_adapt_query/{key}', value, i_step)
 
                 current_val_accuracy = np.mean([val for val in val_mean_accuracies_post_adapt_query.values()])
+                # f1 = f1_score.compute().item()
+                f1 = 0
                 print("Best Accuracy: ", best_val_accuracy)
                 print("current accuracy: ", current_val_accuracy)
+                print("Best f1 score: ", best_f1)
+                print("current f1 score: ", f1)
+
 
                 # Check if the current validation accuracy is better than the best one seen so far
-                if current_val_accuracy > best_val_accuracy:
-                    print("new best! at i_step: ", i_step)
-                    best_val_accuracy = current_val_accuracy
+                if current_val_accuracy > best_val_accuracy or best_f1 > f1:
+                    print("new best! at i_step: ", i_step, "trigger by f1" if best_f1 > f1 else "triggered by acc")
+                    if current_val_accuracy > best_val_accuracy:
+                        best_val_accuracy = current_val_accuracy
+                    if best_f1 > f1:
+                        best_f1 = f1
                     last_best_step = i_step
-                    self._save(i_step)  # Save the model checkpoint
+                    self._save(i_step, model_inner_state, optimizer_inner_state)  # Save the model checkpoint
                     print(f'Saved new best checkpoint with validation accuracy: {best_val_accuracy:.4f}')
             
                 
@@ -750,7 +792,7 @@ class MAML:
         print(f'Loaded checkpoint iteration {checkpoint_step}.')
 
 
-    def _save(self, checkpoint_step):
+    def _save(self, checkpoint_step, model_inner_state, optimizer_inner_state):
         """Saves parameters and optimizer state_dict as a checkpoint.
 
         Args:
@@ -761,6 +803,11 @@ class MAML:
             'optimizer_state_dict': self._optimizer.state_dict(),  
             'checkpoint_step': checkpoint_step
         }, f'{os.path.join(self._log_dir, "state")}{checkpoint_step}.pt')
+        torch.save({
+            'model_state_dict': model_inner_state,  
+            'optimizer_state_dict': optimizer_inner_state,  
+            'checkpoint_step': checkpoint_step
+        }, f'{os.path.join(self._log_dir, "inner_state")}{checkpoint_step}.pt')
         
         print('Saved checkpoint.')
         torch.cuda.empty_cache() 
@@ -971,5 +1018,4 @@ if __name__ == "__main__":
     args = make_parser().parse_args()
     exp = get_exp(args.exp_file, args.name)
     args.experiment_name = args.experiment_name or exp.exp_name
-
     main(exp, args)

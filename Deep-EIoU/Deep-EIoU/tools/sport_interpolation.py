@@ -8,7 +8,7 @@ sys.path.append('.')
 
 def make_parser():
     parser = argparse.ArgumentParser("Interpolation!")
-    parser.add_argument("--dataset_type", default="train", help="train,val, or test")
+    parser.add_argument("--dataset_type", default="test", help="train,val, or test")
     parser.add_argument("--root_path", default="D:/classes/CS330/project/CS330_MOT/Deep-EIoU")
     parser.add_argument("--txt_path", default="D:/classes/CS330/project/CS330_MOT/Deep-EIoU", help="path to tracking result path in MOTChallenge format")
     parser.add_argument("--save_path", default=None, help="save result path, none for override")

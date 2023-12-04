@@ -16,7 +16,7 @@ def calculate_accuracy(logits, labels):
     # Iterate over each frame and sport
     for i in range(labels.shape[0]):  # Loop over frames
         for j in range(labels.shape[1]):  # Loop over sports
-            valid_labels = labels[i, j, labels[i, j] != -1]
+            valid_labels = labels[i, j, labels[i, j] != 0]
 
             # Get the top-N predictions where N is the number of valid labels
             top_n_predictions = predicted_classes[i, j, :len(valid_labels)]
@@ -32,6 +32,11 @@ def calculate_accuracy(logits, labels):
     accuracy = correct_count / total_valid_predictions if total_valid_predictions > 0 else 0.0
 
     return accuracy
+
+# def calculate_accuracy_and_f1(logits, labels, acc_class, f1_class):
+#     for i in range(labels.shape[0]):  # Loop over frames
+#         for j in range(labels.shape[1]):  # Loop over sports
+
 
 
 
