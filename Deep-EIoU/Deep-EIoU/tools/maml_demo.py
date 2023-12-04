@@ -60,7 +60,7 @@ NUM_CONV_LAYERS = 4     #2 was training about the same as 4
 SUMMARY_INTERVAL = 10
 SAVE_INTERVAL = 100
 LOG_INTERVAL = 10
-VAL_INTERVAL = LOG_INTERVAL * 5
+VAL_INTERVAL = LOG_INTERVAL 
 NUM_TEST_TASKS = 600
 NUM_CLASSES_FRAME_ID = 23  # Number of classes for frame ID
 NUM_CLASSES_PLAYER_ID = 23  # Number of classes for player ID
@@ -160,6 +160,8 @@ def make_parser():
     parser.add_argument('--num_workers', type=int, default=4, help=('needed to specify dataloader'))
     parser.add_argument('--checkpoint_step', type=int, default=-1, help=('checkpoint iteration to load for resuming training, or for evaluation (-1 is ignored)'))
     parser.add_argument('--cache', action='store_true')
+
+    parser.add_argument('--eval', default=False, action='store_true', help='wether to evaluate the feature extractor model or not')
     return parser
 
 
@@ -819,9 +821,9 @@ def main(exp, args):
     logger.info("Using device: {}".format(args.device))
     random.seed(0)
 
-    # log_dir = args.log_dir
-    # if log_dir is None:
-    log_dir = f"logs/{args.model}/{args.experiment_name}/way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}"  
+    log_dir = args.log_dir
+    if log_dir is None:
+        log_dir = f"logs/{args.model}/{args.experiment_name}/way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}"  
     logger.info(f"Run parameters {log_dir}")
     writer = tensorboard.SummaryWriter(log_dir)
 
@@ -875,14 +877,25 @@ def main(exp, args):
     pretrained=True, 
     use_gpu=torch.cuda.is_available()
     )
-    model_path = 'checkpoints/sports_model.pth.tar-60'
+
+    # model_path = 'checkpoints/sports_model.pth.tar-60'
+    model_path = 'checkpoints/mot17_sbs_S50.pth'
 
 
     # Load pretrained weights
     if model_path and check_isfile(model_path):
         load_pretrained_weights(extractor_model, model_path)
 
+    exit()
+
     extractor_model.to(args.device)
+
+    if args.eval:
+        extractor_model.eval()
+        #load test data
+        #use model to make predictions on test data
+        #evaluate predictions using accuracy and F1 score
+        #plot results
 
     extractor_model.train()
     # Fine Tune
@@ -936,6 +949,8 @@ def main(exp, args):
     elif args.fine_tune:
         logger.error(f"ERROR: Model '{args.model}' is not implemented for fine-tuning")
         return
+    
+
 
     latest_checkpoint_path = find_latest_checkpoint(log_dir)
     if latest_checkpoint_path:
@@ -973,3 +988,9 @@ if __name__ == "__main__":
     args.experiment_name = args.experiment_name or exp.exp_name
 
     main(exp, args)
+
+
+
+
+
+    #python tools/maml_demo.py --path C:\\Users\\akayl\\Desktop\\CS330_MOT\\dataset\\test --experiment-name sportsmot-test  --fine_tune

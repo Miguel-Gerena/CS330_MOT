@@ -20,7 +20,7 @@ def copy_results(src_directory, dest_directory, filename_suffix='_results.txt'):
                 print(f"Copied {src_file_path} to {dest_file_path}")
 
 # Set your source and destination directories
-dataset_type = 'train'
+dataset_type = 'test'
 src_directory = 'C:/Users/akayl/Desktop/CS330_MOT/Deep-EIoU/Deep-EIoU/YOLOX_outputs/sportsmot-' + dataset_type
 dest_directory = 'C:/Users/akayl/Desktop/CS330_MOT/Deep-EIoU/SCT/sportsmot-' + dataset_type
 

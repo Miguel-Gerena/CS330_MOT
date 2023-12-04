@@ -46,7 +46,7 @@ TrackEval setup: (I did this manually.. sorry :/ )
                         - SPLIT_TO_EVAL
                         - SEQMAP_FILE 
         - run command (gets the tracking results!! )
-                - EX: python ./scripts/run_mot_challenge.py --BENCHMARK sportsmot --SPLIT_TO_EVAL train --METRICS HOTA CLEAR Identity VACE --USE_PARALLEL False --PRINT_CONFIG True --GT_FOLDER ./data/ref --TRACKERS_FOLDER ./data/res --OUTPUT_FOLDER ./output/ --SEQMAP_FILE ./data/ref/seqmaps/sportsmot-train.txt
+                - EX: python ./scripts/run_mot_challenge.py --BENCHMARK sportsmot --SPLIT_TO_EVAL test --METRICS HOTA CLEAR Identity VACE --USE_PARALLEL False --PRINT_CONFIG True --GT_FOLDER ./data/ref --TRACKERS_FOLDER ./data/res --OUTPUT_FOLDER ./output/ --SEQMAP_FILE ./data/ref/seqmaps/sportsmot-test.txt
         - check the TrackEval/output folder for results 
 
 All done :)
