@@ -20,11 +20,11 @@ def calculate_accuracy(logits, labels):
 
             # Get the top-N predictions where N is the number of valid labels
             top_n_predictions = predicted_classes[i, j, :len(valid_labels)]
-
             # Count correct predictions
             for prediction in top_n_predictions:
                 if prediction in valid_labels:
                     correct_count += 1
+
 
             total_valid_predictions += len(valid_labels)
 
@@ -32,6 +32,37 @@ def calculate_accuracy(logits, labels):
     accuracy = correct_count / total_valid_predictions if total_valid_predictions > 0 else 0.0
 
     return accuracy
+
+def calculate_accuracy_and_f1(logits, labels, f1, acc):
+    # Convert logits to probabilities
+    probabilities = torch.softmax(logits, dim=-1)
+    predicted_classes = torch.argsort(probabilities, dim=-1, descending=True)
+
+    correct_count = 0
+    total_valid_predictions = 0
+
+    # Iterate over each frame and sport
+    for i in range(labels.shape[0]):  # Loop over frames
+        for j in range(labels.shape[1]):  # Loop over sports
+            valid_labels = labels[i, j, labels[i, j] != 0]
+
+            # Get the top-N predictions where N is the number of valid labels
+            top_n_predictions = predicted_classes[i, j, :len(valid_labels)]
+            top_n_predictions, _ = torch.sort(top_n_predictions)
+            # Count correct predictions
+            for prediction in top_n_predictions:
+                if prediction in valid_labels:
+                    correct_count += 1
+            f1.update(top_n_predictions, valid_labels)
+            acc.update(top_n_predictions, valid_labels)
+
+
+            total_valid_predictions += len(valid_labels)
+
+    # Calculate accuracy
+    accuracy = correct_count / total_valid_predictions if total_valid_predictions > 0 else 0.0
+
+    return accuracy, f1, acc
 
 # def calculate_accuracy_and_f1(logits, labels, acc_class, f1_class):
 #     for i in range(labels.shape[0]):  # Loop over frames
