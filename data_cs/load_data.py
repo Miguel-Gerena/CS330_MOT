@@ -113,11 +113,14 @@ class DataGenerator(IterableDataset):
         self.number_of_sports = number_of_sports
         self.config = ConfigParser()
         self.base_data_folder = config.get("data_folder", "D:/classes/CS330/project/CS330_MOT/data_cs/" if os.getlogin() == "DK" else "c:/users/akayl/desktop/CS330_MOT/data_cs/")
-        self.data_folder = self.base_data_folder + "/combined_train_val/"
+        if batch_type == 'test':
+            self.data_folder = self.base_data_folder + "/test/"
+        else:
+            self.data_folder = self.base_data_folder + "/combined_train_val/"
+
         if grayscale:
             self.img_size = config.get("img_size", (int(720*resolution_percent), int(1280*resolution_percent)))
         else:
-            # self.img_size = config.get("img_size", (192, 320, 3))
             self.img_size = config.get("img_size", (int(720*resolution_percent), int(1280*resolution_percent), 3))
         
         if self.img_size[0] > self.img_size[1] and ignore_shape == False:
