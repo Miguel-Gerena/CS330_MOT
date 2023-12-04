@@ -60,7 +60,7 @@ NUM_INPUT_CHANNELS = 1 # num batch
 SUMMARY_INTERVAL = 10
 SAVE_INTERVAL = 100
 LOG_INTERVAL = 10
-VAL_INTERVAL = LOG_INTERVAL 
+VAL_INTERVAL = 10
 NUM_TEST_TASKS = 600
 NUM_CLASSES_FRAME_ID = 23  # Number of classes for frame ID
 NUM_CLASSES_PLAYER_ID = 23  # Number of classes for player ID
@@ -139,7 +139,7 @@ def make_parser():
     parser.add_argument('--appearance_thresh', type=float, default=0.25, help='threshold for rejecting low appearance similarity reid matches')
 
     # maml args
-    parser.add_argument('--fine_tune', default=False, action='store_true', help='uses pretrained weights and fine tunes')
+    parser.add_argument('--fine_tune', default=True, action='store_true', help='uses pretrained weights and fine tunes')
     parser.add_argument('--log_dir', type=str, default=None, help='directory to save to or load from')
     parser.add_argument('--model', type=str, default='maml', help='model to run')
     parser.add_argument('--num_videos', type=int, default=1, help='number of videos to include in the support set')
@@ -475,7 +475,7 @@ class MAML:
         player_id_logits2 = self.get_player_id_logits(images, train)
 
             # Calculate accuracy for each component
-        accuracy_dict2 = {
+        accuracy_dict2  = {
             "player_id": util.calculate_accuracy(player_id_logits2, player_id_labels),
             }
         accuracies.append(accuracy_dict2)
@@ -486,7 +486,7 @@ class MAML:
             return accuracies, self.model.state_dict(), self._optimizer.state_dict()
 
 
-    def _outer_step(self, images, labels, train, f1_score=None):
+    def _outer_step(self, images, labels, train, f1_score=None, acc_score=None):
         """Computes the MAML loss and metrics on a batch of tasks.
 
         Args:
@@ -547,7 +547,6 @@ class MAML:
             accuracy_query = {
             "player_id": util.calculate_accuracy(player_id_logits, player_id_labels),
             }
-
             # if not train:
             #     f1_score.update(player_id_logits , player_id_labels)
 
@@ -606,7 +605,7 @@ class MAML:
         if train:
             return outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query_mean, 
         else:
-            return outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query_mean, model_inner_state, optimizer_inner_state, f1_score
+            return outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query_mean, model_inner_state, optimizer_inner_state, f1_score, acc_score
 
 
     def train(self, dataloader_meta_train, dataloader_meta_val, writer):
@@ -629,6 +628,7 @@ class MAML:
         i = 0
         divisor = args.meta_batch_size_miguel // args.meta_batch_size
         f1_score = MulticlassF1Score(num_classes=NUM_CLASSES_FRAME_ID)
+        acc_score = MulticlassAccuracy(num_classes=NUM_CLASSES_FRAME_ID)
         if os.getlogin() == "DK" and args.meta_batch_size_miguel % args.meta_batch_size != 0 :
             raise ValueError(f"batch sizes are not divisable.  {args.meta_batch_size_miguel}, {args.meta_batch_size}")
         print(f'Starting training at iteration {self._start_train_step}.')
@@ -690,8 +690,8 @@ class MAML:
                     # print(f"Batch {batch_idx + 1}/{args.meta_val_iterations}")
                     val_images, val_labels, _ = val_batch  # Unpack the batch
 
-                    val_outer_loss, val_pre_adapt_accuracy_mean, val_post_adapt_accuracy_mean, val_accuracy_query, model_inner_state, optimizer_inner_state, f1_score = (
-                        self._outer_step(val_images, val_labels, train=False, f1_score=f1_score)
+                    val_outer_loss, val_pre_adapt_accuracy_mean, val_post_adapt_accuracy_mean, val_accuracy_query, model_inner_state, optimizer_inner_state,  f1_score, acc_score = (
+                        self._outer_step(val_images, val_labels, train=False, f1_score=f1_score, acc_score=acc_score)
                     )
                     losses.append(val_outer_loss.item())
 
@@ -742,12 +742,11 @@ class MAML:
 
                 current_val_accuracy = np.mean([val for val in val_mean_accuracies_post_adapt_query.values()])
                 # f1 = f1_score.compute().item()
-                # writer.add_scalar('f1 score/val', f1, i_step)
                 f1 = 0
-                # print("Best Accuracy: ", best_val_accuracy)
-                # print("current accuracy: ", current_val_accuracy)
-                # print("Best f1 score: ", best_f1)
-                # print("current f1 score: ", f1)
+                print("Best Accuracy: ", best_val_accuracy)
+                print("current accuracy: ", current_val_accuracy)
+                print("Best f1 score: ", best_f1)
+                print("current f1 score: ", f1)
 
 
                 # Check if the current validation accuracy is better than the best one seen so far
@@ -943,7 +942,7 @@ def main(exp, args):
     if log_dir is None:
         log_dir = f"logs/{args.model}/{args.experiment_name}/.Test_{args.test}.No_Pretrained_weights.way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}"  
     logger.info(f"Run parameters {log_dir}")
-    writer = tensorboard.SummaryWriter(log_dir)
+    writer = tensorboard.SummaryWriter("logs/")
 
     if args.conf is not None:
         exp.test_conf = args.conf
