@@ -63,7 +63,7 @@ NUM_CONV_LAYERS = 4     #2 was training about the same as 4
 SUMMARY_INTERVAL = 10
 SAVE_INTERVAL = 100
 LOG_INTERVAL = 10
-VAL_INTERVAL = LOG_INTERVAL 
+VAL_INTERVAL = LOG_INTERVAL * 5
 NUM_TEST_TASKS = 600
 NUM_CLASSES_FRAME_ID = 23  # Number of classes for frame ID
 NUM_CLASSES_PLAYER_ID = 23  # Number of classes for player ID
@@ -104,7 +104,7 @@ def make_parser():
     parser.add_argument("--conf", default=None, type=float, help="test conf")
     parser.add_argument("--nms", default=None, type=float, help="test nms threshold")
     parser.add_argument("--tsize", default=None, type=int, help="test img size")
-    parser.add_argument("--fps", default=30, type=int, help="frame rate (fps)")
+    parser.add_argument("--fps", default=24, type=int, help="frame rate (fps)")
     parser.add_argument(
         "--fp16",
         dest="fp16",
@@ -143,13 +143,13 @@ def make_parser():
     parser.add_argument('--appearance_thresh', type=float, default=0.25, help='threshold for rejecting low appearance similarity reid matches')
 
     # maml args
-    parser.add_argument('--fine_tune', default=True, action='store_true', help='uses pretrained weights and fine tunes')
+    parser.add_argument('--fine_tune', default=False, action='store_true', help='uses pretrained weights and fine tunes')
     parser.add_argument('--log_dir', type=str, default=None, help='directory to save to or load from')
     parser.add_argument('--model', type=str, default='maml', help='model to run')
     parser.add_argument('--num_videos', type=int, default=1, help='number of videos to include in the support set')
     parser.add_argument('--num_way', type=int, default=23, help='number of classes in a task')
     parser.add_argument('--num_sports', type=int, default=3, help='number of sports')
-    parser.add_argument('--num_support', type=int, default=3, help='number of support examples per class in a task')
+    parser.add_argument('--num_support', type=int, default=10, help='number of support examples per class in a task')
     parser.add_argument('--num_query', type=int, default=3, help='number of query examples per class in a task')
     parser.add_argument('--meta_batch_size', type=int, default=5, help='number of tasks per outer-loop update')
     parser.add_argument('--meta_batch_size_miguel', type=int, default=10, help='number of tasks per outer-loop update')
@@ -656,7 +656,7 @@ class MAML:
 
 
             # Write loss value to TensorBoard
-            writer.add_scalar('loss/val', outer_loss.item(), i_step)
+            writer.add_scalar('loss/train', outer_loss.item(), i_step)
 
             # Write pre-adaptation support accuracies to TensorBoard
             for key, value in pre_adapt_accuracy_mean.items():
@@ -760,6 +760,8 @@ class MAML:
                 
             if i_step - last_best_step >= 100:
                 print("Stopping training - 100 steps have passed since the last best accuracy")
+                print("last best i_step: ", last_best_step)
+                print("last best accuracy: ", best_val_accuracy)
                 break
 
 
@@ -868,9 +870,9 @@ def main(exp, args):
 
     # log_dir = args.log_dir
     # if log_dir is None:
-    log_dir = f"logs/{args.model}/{args.experiment_name}/Bway_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}hd_{NUM_HIDDEN_CHANNELS}.cvl_{NUM_CONV_LAYERS}"  # pylint: disable=line-too-long
+    log_dir = f"logs/{args.model}/{args.experiment_name}/way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}"  
     logger.info(f"Run parameters {log_dir}")
-    writer = tensorboard.SummaryWriter("logs/test")
+    writer = tensorboard.SummaryWriter(log_dir)
 
     if args.conf is not None:
         exp.test_conf = args.conf
