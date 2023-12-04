@@ -5,7 +5,7 @@
 *.csv
 *.npy
 *.ini
-#*.txt
+# *.txt
 data_cs/sportsmot_publish/*
 logs/*
 *.png
@@ -18,3 +18,6 @@ data_cs/SportMOTReID/*
 *.tar*
 *.bmp
 SORT/*
+YOLOX_outputs/*
+*.1
+Deep-EIoU/Deep-EIoU/YOLOX_outputs/*
