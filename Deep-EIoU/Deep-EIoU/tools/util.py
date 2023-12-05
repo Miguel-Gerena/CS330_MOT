@@ -5,10 +5,15 @@ import numpy as np
 import torch.nn.functional as F
 
 
-def calculate_accuracy(logits, labels):
+def calculate_accuracy(logits, labels, ONE_ZERO=False):
     # Convert logits to probabilities
-    probabilities = torch.softmax(logits, dim=-1)
-    predicted_classes = torch.argsort(probabilities, dim=-1, descending=True)
+    if ONE_ZERO:
+        logits[logits[:,:] > 0] = 1
+        logits[logits[:,:] < 0] = 0
+        predicted_classes = logits
+    else:
+        probabilities = torch.softmax(logits, dim=-1)
+        predicted_classes = torch.argsort(probabilities, dim=-1, descending=True)
 
     correct_count = 0
     total_valid_predictions = 0
@@ -16,7 +21,10 @@ def calculate_accuracy(logits, labels):
     # Iterate over each frame and sport
     for i in range(labels.shape[0]):  # Loop over frames
         for j in range(labels.shape[1]):  # Loop over sports
-            valid_labels = labels[i, j, labels[i, j] != 0]
+            if not ONE_ZERO:
+                valid_labels = labels[i, j, labels[i, j] != 0]
+            else:
+                valid_labels = labels
 
             # Get the top-N predictions where N is the number of valid labels
             top_n_predictions = predicted_classes[i, j, :len(valid_labels)]
@@ -34,7 +42,7 @@ def calculate_accuracy(logits, labels):
 
     return accuracy
 
-def calculate_accuracy_and_f1(logits, labels, f1, acc):
+def calculate_accuracy_and_f1(logits, labels, f1, acc, ONE_ZERO=False):
     # Convert logits to probabilities
     probabilities = torch.softmax(logits, dim=-1)
     predicted_classes = torch.argsort(probabilities, dim=-1, descending=True)

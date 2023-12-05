@@ -147,7 +147,7 @@ def make_parser():
     parser.add_argument('--num_videos', type=int, default=1, help='number of videos to include in the support set')
     parser.add_argument('--num_way', type=int, default=23, help='number of classes in a task')
     parser.add_argument('--num_sports', type=int, default=3, help='number of sports')
-    parser.add_argument('--num_support', type=int, default=10, help='number of support examples per class in a task')
+    parser.add_argument('--num_support', type=int, default=3, help='number of support examples per class in a task')
     parser.add_argument('--num_query', type=int, default=3, help='number of query examples per class in a task')
     parser.add_argument('--meta_batch_size', type=int, default=10, help='number of tasks per outer-loop update')
     parser.add_argument('--meta_batch_size_miguel', type=int, default=10, help='number of tasks per outer-loop update')
@@ -456,7 +456,7 @@ class MAML:
 
             # Calculate accuracy for each component
             accuracy_dict = {
-            "player_id": util.calculate_accuracy(player_id_logits, player_id_labels)
+            "player_id": util.calculate_accuracy(player_id_logits, player_id_labels, ONE_ZERO_LABELS)
             }
             accuracies.append(accuracy_dict)
 
@@ -479,7 +479,7 @@ class MAML:
 
             # Calculate accuracy for each component
         accuracy_dict2  = {
-            "player_id": util.calculate_accuracy(player_id_logits2, player_id_labels),
+            "player_id": util.calculate_accuracy(player_id_logits2, player_id_labels, ONE_ZERO_LABELS),
             }
         accuracies.append(accuracy_dict2)
         # print(accuracies)
@@ -549,10 +549,10 @@ class MAML:
         
             # Calculate accuracy for each component
             accuracy_query = {
-            "player_id": util.calculate_accuracy(player_id_logits, player_id_labels),
+            "player_id": util.calculate_accuracy(player_id_logits, player_id_labels, ONE_ZERO_LABELS)
             }
-            # if not train:
-            #     f1_score.update(player_id_logits , player_id_labels)
+            if not train:
+                _, f1_score, acc_score = util.calculate_accuracy_and_f1(player_id_logits, player_id_labels, f1_score, acc_score, ONE_ZERO_LABELS)
 
             outer_loss_batch.append(player_id_loss)
             accuracies_support_batch.append(accuracies_support)
@@ -947,7 +947,7 @@ def main(exp, args):
 
     log_dir = args.log_dir
     if log_dir is None:
-        log_dir = f"logs/{args.model}/{args.experiment_name}/.Test_{args.test}.No_Pretrained_weights.way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}"  
+        log_dir = f"D:logs/{args.model}/{args.experiment_name}/.Test_{args.test}.No_Pretrained_weights.way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}"  
     logger.info(f"Run parameters {log_dir}")
     writer = tensorboard.SummaryWriter("logs/")
 
