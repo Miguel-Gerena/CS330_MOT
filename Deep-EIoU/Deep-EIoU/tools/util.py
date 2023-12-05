@@ -1,8 +1,7 @@
 """Utilities for scoring the model."""
 import torch
-import cv2
-import numpy as np
-import torch.nn.functional as F
+from torcheval.metrics.functional import multiclass_accuracy
+
 
 
 def calculate_accuracy(logits, labels, ONE_ZERO=False):
@@ -21,31 +20,37 @@ def calculate_accuracy(logits, labels, ONE_ZERO=False):
     # Iterate over each frame and sport
     for i in range(labels.shape[0]):  # Loop over frames
         for j in range(labels.shape[1]):  # Loop over sports
-            if not ONE_ZERO:
-                valid_labels = labels[i, j, labels[i, j] != 0]
+            if ONE_ZERO:
+                valid_labels = labels[i, j]
+                top_n_predictions = predicted_classes[i, j]
+                accuracy = multiclass_accuracy(top_n_predictions, valid_labels).item()
             else:
-                valid_labels = labels
+                valid_labels = labels[i, j, labels[i, j] != 0]
+                top_n_predictions = predicted_classes[i, j, :len(valid_labels)]
+                top_n_predictions, _ = torch.sort(top_n_predictions)
 
             # Get the top-N predictions where N is the number of valid labels
-            top_n_predictions = predicted_classes[i, j, :len(valid_labels)]
-            top_n_predictions, _ = torch.sort(top_n_predictions)
             # Count correct predictions
-            for prediction in top_n_predictions:
-                if prediction in valid_labels:
-                    correct_count += 1
-
-
-            total_valid_predictions += len(valid_labels)
+                for prediction in top_n_predictions:
+                    if prediction in valid_labels:
+                        correct_count += 1
+                total_valid_predictions += len(valid_labels)
 
     # Calculate accuracy
-    accuracy = correct_count / total_valid_predictions if total_valid_predictions > 0 else 0.0
+    if not ONE_ZERO:
+        accuracy = correct_count / total_valid_predictions if total_valid_predictions > 0 else 0.0
 
     return accuracy
 
 def calculate_accuracy_and_f1(logits, labels, f1, acc, ONE_ZERO=False):
     # Convert logits to probabilities
-    probabilities = torch.softmax(logits, dim=-1)
-    predicted_classes = torch.argsort(probabilities, dim=-1, descending=True)
+    if ONE_ZERO:
+        logits[logits[:,:] > 0] = 1
+        logits[logits[:,:] < 0] = 0
+        predicted_classes = logits
+    else:
+        probabilities = torch.softmax(logits, dim=-1)
+        predicted_classes = torch.argsort(probabilities, dim=-1, descending=True)
 
     correct_count = 0
     total_valid_predictions = 0
@@ -53,23 +58,30 @@ def calculate_accuracy_and_f1(logits, labels, f1, acc, ONE_ZERO=False):
     # Iterate over each frame and sport
     for i in range(labels.shape[0]):  # Loop over frames
         for j in range(labels.shape[1]):  # Loop over sports
-            valid_labels = labels[i, j, labels[i, j] != 0]
+            if ONE_ZERO:
+                valid_labels = labels[i, j]
+                top_n_predictions = predicted_classes[i, j]
+                accuracy = multiclass_accuracy(top_n_predictions, valid_labels).item()
+            else:
+                valid_labels = labels[i, j, labels[i, j] != 0]
+                top_n_predictions = predicted_classes[i, j, :len(valid_labels)]
+                top_n_predictions, _ = torch.sort(top_n_predictions)
 
             # Get the top-N predictions where N is the number of valid labels
-            top_n_predictions = predicted_classes[i, j, :len(valid_labels)]
-            top_n_predictions, _ = torch.sort(top_n_predictions)
             # Count correct predictions
-            for prediction in top_n_predictions:
-                if prediction in valid_labels:
-                    correct_count += 1
+                for prediction in top_n_predictions:
+                    if prediction in valid_labels:
+                        correct_count += 1
+                total_valid_predictions += len(valid_labels)
+
             f1.update(top_n_predictions, valid_labels)
             acc.update(top_n_predictions, valid_labels)
 
 
-            total_valid_predictions += len(valid_labels)
 
     # Calculate accuracy
-    accuracy = correct_count / total_valid_predictions if total_valid_predictions > 0 else 0.0
+    if not ONE_ZERO:
+        accuracy = correct_count / total_valid_predictions if total_valid_predictions > 0 else 0.0
 
     return accuracy, f1, acc
 

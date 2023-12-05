@@ -66,7 +66,7 @@ NUM_CLASSES_FRAME_ID = 23  # Number of classes for frame ID
 NUM_CLASSES_PLAYER_ID = 23  # Number of classes for player ID
 WEIGHT_BBOX = 4.0
 WEIGHT_PLAYER_ID = 1.0
-ONE_ZERO_LABELS = False
+ONE_ZERO_LABELS = True
 
 
 
@@ -147,9 +147,9 @@ def make_parser():
     parser.add_argument('--num_videos', type=int, default=1, help='number of videos to include in the support set')
     parser.add_argument('--num_way', type=int, default=23, help='number of classes in a task')
     parser.add_argument('--num_sports', type=int, default=3, help='number of sports')
-    parser.add_argument('--num_support', type=int, default=3, help='number of support examples per class in a task')
+    parser.add_argument('--num_support', type=int, default=6, help='number of support examples per class in a task')
     parser.add_argument('--num_query', type=int, default=3, help='number of query examples per class in a task')
-    parser.add_argument('--meta_batch_size', type=int, default=10, help='number of tasks per outer-loop update')
+    parser.add_argument('--meta_batch_size', type=int, default=5, help='number of tasks per outer-loop update')
     parser.add_argument('--meta_batch_size_miguel', type=int, default=10, help='number of tasks per outer-loop update')
 
     parser.add_argument('--test_batch_size', type=int, default=6, help='number of tasks per outer-loop update')
@@ -757,8 +757,8 @@ class MAML:
 
 
                 # Check if the current validation accuracy is better than the best one seen so far
-                if current_val_accuracy > best_val_accuracy or best_f1 > f1:
-                    print("new best! at i_step: ", i_step, "trigger by f1" if best_f1 > f1 else "triggered by acc")
+                if current_val_accuracy > best_val_accuracy or f1 > best_f1:
+                    print("new best! at i_step: ", i_step, "trigger by f1" if f1 > best_f1 else "triggered by acc")
                     print("last best accuracy: ", best_val_accuracy)
                     #print("last best f1: ", best_f1)
                     if current_val_accuracy > best_val_accuracy:
@@ -947,7 +947,10 @@ def main(exp, args):
 
     log_dir = args.log_dir
     if log_dir is None:
-        log_dir = f"D:logs/{args.model}/{args.experiment_name}/.Test_{args.test}.No_Pretrained_weights.way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}"  
+        if os.getlogin() == "DK":
+            log_dir = f"logs/{args.experiment_name}{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size_miguel}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}"  
+        else:
+            log_dir = f"logs/{args.model}/{args.experiment_name}/.Test_{args.test}.No_Pretrained_weights.way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}"  
     logger.info(f"Run parameters {log_dir}")
     writer = tensorboard.SummaryWriter("logs/")
 
