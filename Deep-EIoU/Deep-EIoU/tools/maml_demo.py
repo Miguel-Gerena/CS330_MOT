@@ -450,7 +450,8 @@ class MAML:
             player_id_labels.to(args.device)
             player_id_labels = player_id_labels + 1
 
-            # player_id_logits[player_id_labels[:,:]== -1] = 0
+            if ONE_ZERO_LABELS:
+                player_id_labels[player_id_labels[:,:] != 0] = 1
             player_id_loss = F.cross_entropy(player_id_logits, player_id_labels)
 
 
@@ -539,7 +540,8 @@ class MAML:
 
             player_id_logits = self.get_player_id_logits(images_query, train, isQuery=True)
 
-            # player_id_logits[player_id_labels[:,:]== -1] = 0
+            if ONE_ZERO_LABELS:
+                player_id_logits[player_id_labels[:,:] != 0] = 1
             player_id_loss = F.cross_entropy(player_id_logits, player_id_labels)
         
             # Calculate accuracy for each component

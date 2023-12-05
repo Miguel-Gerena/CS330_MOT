@@ -20,6 +20,7 @@ def calculate_accuracy(logits, labels):
 
             # Get the top-N predictions where N is the number of valid labels
             top_n_predictions = predicted_classes[i, j, :len(valid_labels)]
+            top_n_predictions, _ = torch.sort(top_n_predictions)
             # Count correct predictions
             for prediction in top_n_predictions:
                 if prediction in valid_labels:
