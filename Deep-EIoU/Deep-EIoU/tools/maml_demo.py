@@ -64,7 +64,9 @@ VAL_INTERVAL = 10
 NUM_TEST_TASKS = 600
 NUM_CLASSES_FRAME_ID = 23  # Number of classes for frame ID
 NUM_CLASSES_PLAYER_ID = 23  # Number of classes for player ID
-
+WEIGHT_BBOX = 4.0
+WEIGHT_PLAYER_ID = 1.0
+ONE_ZERO_LABELS = False
 
 
 
