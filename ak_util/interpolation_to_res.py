@@ -14,5 +14,5 @@ def copy_directory(dataset_type):
     shutil.copytree(source_dir, os.path.join(destination_dir, 'sportsmot-' + dataset_type), dirs_exist_ok=True)
 
 # Example usage
-dataset_type = 'train'
+dataset_type = 'test'
 copy_directory(dataset_type)

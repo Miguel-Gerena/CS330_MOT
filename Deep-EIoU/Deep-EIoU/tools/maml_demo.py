@@ -57,9 +57,6 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 IMAGE_EXT = [".jpg", ".jpeg", ".webp", ".bmp", ".png"]
 
 NUM_INPUT_CHANNELS = 1 # num batch
-NUM_HIDDEN_CHANNELS = 32 # usually 32
-KERNEL_SIZE = 3
-NUM_CONV_LAYERS = 4     #2 was training about the same as 4
 SUMMARY_INTERVAL = 10
 SAVE_INTERVAL = 100
 LOG_INTERVAL = 10
@@ -75,11 +72,11 @@ ONE_ZERO_LABELS = False
 
 def make_parser():
     parser = argparse.ArgumentParser("DeepEIoU Demo")
-    parser.add_argument("-expn", "--experiment-name", type=str, default="sportsmot-train", help="should be: sportsmot-dataset_type (IE: test, train, val)")
+    parser.add_argument("-expn", "--experiment-name", type=str, default="sportsmot-test", help="should be: sportsmot-dataset_type (IE: test, train, val)")
     parser.add_argument("-n", "--name", type=str, default=None, help="model name")
 
     parser.add_argument(
-        "--path", default=base_path + "/data_cs/sportsmot_publish/dataset/train", help="path to images or video"
+        "--path", default=base_path + "/dataset/test", help="path to images or video"
     )
     parser.add_argument(
         "--save_result",
@@ -152,10 +149,10 @@ def make_parser():
     parser.add_argument('--num_sports', type=int, default=3, help='number of sports')
     parser.add_argument('--num_support', type=int, default=10, help='number of support examples per class in a task')
     parser.add_argument('--num_query', type=int, default=3, help='number of query examples per class in a task')
-    parser.add_argument('--meta_batch_size', type=int, default=5, help='number of tasks per outer-loop update')
+    parser.add_argument('--meta_batch_size', type=int, default=10, help='number of tasks per outer-loop update')
     parser.add_argument('--meta_batch_size_miguel', type=int, default=10, help='number of tasks per outer-loop update')
 
-    # parser.add_argument('--test_batch_size', type=int, default=6, help='number of tasks per outer-loop update')
+    parser.add_argument('--test_batch_size', type=int, default=6, help='number of tasks per outer-loop update')
     parser.add_argument('--meta_train_iterations', type=int, default=2000000, help='number of baches of tasks to iterate through for train')
     parser.add_argument('--meta_val_iterations', type=int, default=3, help='number of baches of tasks to iterate through for val per every check')
     parser.add_argument('--num_inner_steps', type=int, default=1, help='number of inner-loop updates')
@@ -166,6 +163,8 @@ def make_parser():
     parser.add_argument('--num_workers', type=int, default=4, help=('needed to specify dataloader'))
     parser.add_argument('--checkpoint_step', type=int, default=-1, help=('checkpoint iteration to load for resuming training, or for evaluation (-1 is ignored)'))
     parser.add_argument('--cache', action='store_true')
+
+    parser.add_argument('--eval', default=False, action='store_true', help='wether to evaluate the feature extractor model or not')
     return parser
 
 
@@ -392,7 +391,6 @@ class MAML:
 
 
     def _forward(self, images):
-
         return self.model(images)
     
     def get_player_id_logits(self, images, train, isQuery=False):
@@ -507,8 +505,13 @@ class MAML:
         outer_loss_batch = []
         accuracies_support_batch = []
         accuracy_query_batch = []
+
+        if args.test:
+            batch_size = args.test_batch_size
+        else:
+            batch_size = args.meta_batch_size
  
-        for task_idx in range(args.meta_batch_size):  # Iterate over tasks in the batch
+        for task_idx in range(batch_size):  # Iterate over tasks in the batch
             images_task = images[task_idx]  # Images for the current task
             labels_task = labels[task_idx]  # Labels for the current task
 
@@ -548,8 +551,7 @@ class MAML:
             accuracy_query = {
             "player_id": util.calculate_accuracy(player_id_logits, player_id_labels),
             }
-            if not train:
-                util.calculate_accuracy_and_f1(player_id_logits, player_id_labels, f1=f1_score, acc=acc_score)
+            # if not train:
             #     f1_score.update(player_id_logits , player_id_labels)
 
             outer_loss_batch.append(player_id_loss)
@@ -603,7 +605,7 @@ class MAML:
 
         # print(f" query accuracies: {accuracy_query_mean}")
 
-        print("\nOuter loss: ", outer_loss)
+        # print("\nOuter loss: ", outer_loss)
         if train:
             return outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query_mean, 
         else:
@@ -743,6 +745,7 @@ class MAML:
                     writer.add_scalar(f'val_accuracy/val_post_adapt_query/{key}', value, i_step)
 
                 current_val_accuracy = np.mean([val for val in val_mean_accuracies_post_adapt_query.values()])
+                
                 f1 = f1_score.compute().item()
                 ac = acc_score.compute().item()
 
@@ -756,10 +759,14 @@ class MAML:
                 # Check if the current validation accuracy is better than the best one seen so far
                 if current_val_accuracy > best_val_accuracy or best_f1 > f1:
                     print("new best! at i_step: ", i_step, "trigger by f1" if best_f1 > f1 else "triggered by acc")
+                    print("last best accuracy: ", best_val_accuracy)
+                    #print("last best f1: ", best_f1)
                     if current_val_accuracy > best_val_accuracy:
                         best_val_accuracy = current_val_accuracy
+                        print("NEW best accuracy: ", best_val_accuracy)
                     if best_f1 > f1:
                         best_f1 = f1
+                        print("NEW best f1: ", best_f1)
                     last_best_step = i_step
                     self._save(i_step, model_inner_state, optimizer_inner_state)  # Save the model checkpoint
                     print(f'Saved new best checkpoint with validation accuracy: {best_val_accuracy:.4f}')
@@ -769,6 +776,7 @@ class MAML:
                 print("Stopping training - 100 steps have passed since the last best accuracy")
                 print("last best i_step: ", last_best_step)
                 print("last best accuracy: ", best_val_accuracy)
+                print("last best f1: ", best_f1)
                 break
 
 
@@ -821,6 +829,68 @@ class MAML:
         print('Saved checkpoint.')
         torch.cuda.empty_cache() 
         print('Cleared cuda cache.')   
+
+    
+    # def test(self, dataloader_test):
+    #     """Evaluate the MAML on test tasks.
+
+    #     Args:
+    #         dataloader_test (DataLoader): loader for test tasks
+    #     """
+    #     self.model.eval()
+    #     accuracies = []
+    #     losses = []
+    #     accuracies_pre_adapt_support = {}
+    #     accuracies_post_adapt_support = {}
+    #     accuracies_post_adapt_query = {}
+
+    #     for batch_idx, task_batch in tqdm(enumerate(dataloader_test, start=0), total=args.test_batch_size):
+    #         images, labels, _ = task_batch  # Unpack the batch
+            
+    #         outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query, model_inner_state, optimizer_inner_state, f1_score = self._outer_step(images, labels, train=False)
+    #         losses.append(outer_loss.item())
+
+    #          # Collect pre-adaptation support accuracies
+    #         for key, value in pre_adapt_accuracy_mean.items():
+    #             if key not in accuracies_pre_adapt_support:
+    #                 accuracies_pre_adapt_support[key] = []
+    #             accuracies_pre_adapt_support[key].append(value)
+
+    #         # Collect post-adaptation support accuracies
+    #         for key, value in post_adapt_accuracy_mean.items():
+    #             if key not in accuracies_post_adapt_support:
+    #                 accuracies_post_adapt_support[key] = []
+    #             accuracies_post_adapt_support[key].append(value)
+
+    #         # Collect post-adaptation query accuracies
+    #         for key, value in accuracy_query.items():
+    #             if key not in accuracies_post_adapt_query:
+    #                 accuracies_post_adapt_query[key] = []
+    #             accuracies_post_adapt_query[key].append(value)
+
+    #     mean_loss = np.mean(losses)
+
+    #     val_mean_accuracies_pre_adapt_support = {}
+    #     for key, value_list in accuracies_pre_adapt_support.items():
+    #         val_mean_accuracies_pre_adapt_support[key] = np.mean(value_list)
+
+    #     val_mean_accuracies_post_adapt_support = {}
+    #     for key, value_list in accuracies_post_adapt_support.items():
+    #         val_mean_accuracies_post_adapt_support[key] = np.mean(value_list)
+
+    #     val_mean_accuracies_post_adapt_query = {}
+    #     for key, value_list in accuracies_post_adapt_query.items():
+    #         val_mean_accuracies_post_adapt_query[key] = np.mean(value_list)
+
+            
+    #     mean = np.mean(accuracies)
+    #     std = np.std(accuracies)
+    #     mean_95_confidence_interval = 1.96 * std / np.sqrt(args.test_batch_size)
+    #     print(
+    #         f'Accuracy over {args.test_batch_size} test tasks: '
+    #         f'mean {mean:.3f}, '
+    #         f'95% confidence interval {mean_95_confidence_interval:.3f}'
+    #     )
 
 def get_support_query(images, labels):
     support_frames = images[:,:-args.num_query]
@@ -875,9 +945,9 @@ def main(exp, args):
     logger.info("Using device: {}".format(args.device))
     random.seed(0)
 
-    # log_dir = args.log_dir
-    # if log_dir is None:
-    log_dir = f"logs/{args.model}/{args.experiment_name}/way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}"  
+    log_dir = args.log_dir
+    if log_dir is None:
+        log_dir = f"logs/{args.model}/{args.experiment_name}/.Test_{args.test}.No_Pretrained_weights.way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}"  
     logger.info(f"Run parameters {log_dir}")
     writer = tensorboard.SummaryWriter("logs/")
 
@@ -931,12 +1001,14 @@ def main(exp, args):
     pretrained=True, 
     use_gpu=torch.cuda.is_available()
     )
+
     model_path = 'checkpoints/sports_model.pth.tar-60'
 
 
     # Load pretrained weights
     if model_path and check_isfile(model_path):
         load_pretrained_weights(extractor_model, model_path)
+
 
     extractor_model.to(args.device)
 
@@ -986,12 +1058,33 @@ def main(exp, args):
                 )
             )
 
-        print("Loaded data")
-        maml.train(meta_train_loader, meta_val_loader, writer)
+            print("Loaded data")
+            maml.train(meta_train_loader, meta_val_loader, writer)
+        # else:
+        #     meta_test_iterable = DataGenerator(
+        #     args.num_videos,
+        #     args.num_support + args.num_query,
+        #     batch_type="test",
+        #     cache=False,
+        #     generate_new_tasks=True,
+        #     config={"data_folder":base_path + "/data_cs"}
+        #     )
+        #     meta_test_loader = iter(
+        #         torch.utils.data.DataLoader(
+        #             meta_test_iterable,
+        #             batch_size=args.test_batch_size,
+        #             num_workers=args.num_workers,
+        #             # pin_memory=True,
+        #         )
+        #     )
+        #     maml.test(meta_test_loader)
+        #     return
 
     elif args.fine_tune:
         logger.error(f"ERROR: Model '{args.model}' is not implemented for fine-tuning")
         return
+    
+
 
     latest_checkpoint_path = find_latest_checkpoint(log_dir)
     if latest_checkpoint_path:
@@ -1009,6 +1102,7 @@ def main(exp, args):
 
 
     dir = args.path  
+    print(args.path)
     if os.path.exists(os.path.join(dir, 'img1')):
         process_sequence(predictor, extractor, os.path.join(dir, 'img1'), vis_folder, args)
     else:
@@ -1028,3 +1122,9 @@ if __name__ == "__main__":
     exp = get_exp(args.exp_file, args.name)
     args.experiment_name = args.experiment_name or exp.exp_name
     main(exp, args)
+
+
+
+
+
+    #python tools/maml_demo.py --path C:\\Users\\akayl\\Desktop\\CS330_MOT\\dataset\\test --experiment-name sportsmot-test  --fine_tune

@@ -5,7 +5,7 @@
 *.csv
 *.npy
 *.ini
-# *.txt
+*.txt
 data_cs/sportsmot_publish/*
 logs/*
 *.png
