@@ -743,10 +743,13 @@ class MAML:
                     writer.add_scalar(f'val_accuracy/val_post_adapt_query/{key}', value, i_step)
 
                 current_val_accuracy = np.mean([val for val in val_mean_accuracies_post_adapt_query.values()])
-                # f1 = f1_score.compute().item()
-                f1 = 0
+                
+                f1 = f1_score.compute().item()
+                ac = acc_score.compute().item()
+
                 print("Best Accuracy: ", best_val_accuracy)
                 print("current accuracy: ", current_val_accuracy)
+                print("acc from torch eval: ", ac)
                 print("Best f1 score: ", best_f1)
                 print("current f1 score: ", f1)
 
