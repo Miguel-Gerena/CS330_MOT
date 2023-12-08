@@ -8,6 +8,7 @@ sys.path.append('.')
 
 def make_parser():
     parser = argparse.ArgumentParser("Interpolation!")
+    parser.add_argument("-expn", "--experiment-name", type=str, default=None, help="should be the parameters used during training")
     parser.add_argument("--dataset_type", default="test", help="train,val, or test")
     parser.add_argument("--root_path", default="C:/Users/akayl/Desktop/CS330_MOT/Deep-EIoU")
     parser.add_argument("--txt_path", default="C:/Users/akayl/Desktop/CS330_MOT/Deep-EIoU", help="path to tracking result path in MOTChallenge format")
@@ -115,12 +116,12 @@ def dti(txt_path, save_path, n_min=25, n_dti=20, distance_thres=500):
 if __name__ == '__main__':
     
     args = make_parser().parse_args()
-    file_path = os.path.join(args.root_path,'SCT/sportsmot-' + args.dataset_type)
+    file_path = os.path.join(args.root_path,'SCT/' + args.experiment_name)
 
-    mkdir_if_missing(os.path.join(args.root_path,'interpolation/sportsmot-' + args.dataset_type))
+    mkdir_if_missing(os.path.join(args.root_path,'interpolation/' + args.experiment_name))
         
     for scene in os.listdir(file_path):
         scene = scene.replace('.txt','')
         input_path = os.path.join(file_path,'{}.txt'.format(scene))
-        output_path = os.path.join(args.root_path, 'interpolation/sportsmot-' + args.dataset_type,'{}.txt'.format(scene))
+        output_path = os.path.join(args.root_path, 'interpolation/' + args.experiment_name,'{}.txt'.format(scene))
         dti(input_path, output_path, n_min=args.n_min, n_dti=args.n_dti, distance_thres=args.distance_thres)

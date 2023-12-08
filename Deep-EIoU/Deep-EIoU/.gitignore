@@ -1,4 +1,1 @@
-*.pyd
-YOLOX_outputs/*
-*.1
-YOLOX_outputs/sportsmot-train/*
+reid/*

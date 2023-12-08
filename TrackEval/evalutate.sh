@@ -5,4 +5,4 @@
 # call the main evalualtion process.
 # python ./scripts/run_mot_challenge.py --BENCHMARK sportsmot --SPLIT_TO_EVAL test --METRICS HOTA CLEAR Identity VACE --USE_PARALLEL False --PRINT_CONFIG True --GT_FOLDER ./data/ref/sportsmot-test --TRACKERS_FOLDER ./data/res/sportsmot-test/tracker_to_eval/data --OUTPUT_FOLDER ./output/
 
- python ./scripts/run_mot_challenge.py --BENCHMARK sportsmot --SPLIT_TO_EVAL teat --METRICS HOTA CLEAR Identity VACE --USE_PARALLEL False --PRINT_CONFIG True --GT_FOLDER ./data/ref --TRACKERS_FOLDER ./data/res --OUTPUT_FOLDER ./output/ --SEQMAP_FILE ./data/ref/seqmaps/sportsmot-test.txt
+ python ./scripts/run_mot_challenge.py --BENCHMARK sportsmot --SPLIT_TO_EVAL test --METRICS HOTA CLEAR Identity VACE --USE_PARALLEL False --PRINT_CONFIG True --GT_FOLDER ./data/ref --TRACKERS_FOLDER ./data/res --OUTPUT_FOLDER ./output/ --SEQMAP_FILE ./data/ref/seqmaps/sportsmot-test.txt

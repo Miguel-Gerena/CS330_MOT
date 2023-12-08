@@ -4,8 +4,8 @@
 *.pyc
 *.csv
 *.npy
-*.ini
-*.txt
+# *.ini
+# *.txt
 data_cs/sportsmot_publish/*
 logs/*
 *.png
@@ -21,3 +21,19 @@ SORT/*
 YOLOX_outputs/*
 *.1
 Deep-EIoU/Deep-EIoU/YOLOX_outputs/*
+Deep-EIoU/interpolation
+Deep-EIoU/SCT
+Deep-EIoU/Deep-EIoU/reid
+Deep-EIoU/Deep-EIoU/logs
+TrackEval/data/res
+TrackEval/output
+*.pyd
+*.exp
+*.c
+Deep-EIoU/Deep-EIoU/reid/build/lib.win-amd64-cpython-39/torchreid/metrics/rank_cylib/rank_cy.cp39-win_amd64.pyd
+Deep-EIoU/Deep-EIoU/reid/build/temp.win-amd64-cpython-39/Release/torchreid/metrics/rank_cylib/rank_cy.cp39-win_amd64.exp
+Deep-EIoU/Deep-EIoU/reid/build/temp.win-amd64-cpython-39/Release/torchreid/metrics/rank_cylib/rank_cy.cp39-win_amd64.lib
+Deep-EIoU/Deep-EIoU/reid/build/temp.win-amd64-cpython-39/Release/torchreid/metrics/rank_cylib/rank_cy.obj
+Deep-EIoU/Deep-EIoU/reid/torchreid/metrics/rank_cylib/rank_cy.c
+Deep-EIoU/Deep-EIoU/reid/torchreid/metrics/rank_cylib/rank_cy.cp39-win_amd64.pyd
+Deep-EIoU/Deep-EIoU/reid/torchreid.egg-info/PKG-INFO

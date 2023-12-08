@@ -48,10 +48,15 @@ def convert_images_video(config={}):
 
 
 def move_datasets(data_set):
-    with open(f"{data_set}_counts_by_sport.json", 'r') as f:
+    os.makedirs("./data_cs/combined_test", exist_ok=True)
+    base_dir = "./data_cs/combined_train_val"
+    dest = "./data_cs/combined_test"
+    with open(f"./data_cs/combined_counts/{data_set}_counts_by_sport.json", 'r') as f:
         data = json.load(f)
     train_folders = [value for value in data.values()]
-    train = train_folders[0] + train_folders[1] + train_folders[2] 
+    for folder in train_folders:
+        for value in folder:
+            os.rename(f"{base_dir}/{value}", f"{dest}/{value}")
 
 
 def get_jsons_by_sport(count_folder= "c:/users/akayl/desktop/CS330_MOT/data/combined_counts/", files=["test_counts.json", "train_counts.json", "val_counts.json"]):

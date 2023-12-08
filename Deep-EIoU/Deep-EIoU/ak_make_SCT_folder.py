@@ -20,12 +20,12 @@ def copy_results(src_directory, dest_directory, filename_suffix='_results.txt'):
                 print(f"Copied {src_file_path} to {dest_file_path}")
 
 # Set your source and destination directories
-dataset_type = 'test'
-src_directory = 'C:/Users/akayl/Desktop/CS330_MOT/Deep-EIoU/Deep-EIoU/YOLOX_outputs/sportsmot-' + dataset_type
-dest_directory = 'C:/Users/akayl/Desktop/CS330_MOT/Deep-EIoU/SCT/sportsmot-' + dataset_type
+# dataset_type = 'test'
+# src_directory = 'D:/classes/CS330/project/CS330_MOT/Deep-EIoU/Deep-EIoU/YOLOX_outputs/sportsmot-' + dataset_type
+# dest_directory = 'D:/classes/CS330/project/CS330_MOT/Deep-EIoU/SCT/sportsmot-' + dataset_type
 
-print(src_directory)
-print(dest_directory)
+# print(src_directory)
+# print(dest_directory)
 
-# Call the function with your specified directories
-copy_results(src_directory, dest_directory)
+# # Call the function with your specified directories
+# copy_results(src_directory, dest_directory)

@@ -40,12 +40,12 @@ from torchreid.utils import load_pretrained_weights
 from pathlib import Path
 from torch.utils import tensorboard
 from tqdm import tqdm
-if os.getlogin() == "DK":
+if os.getlogin() == "darke":
     base_path ="D:/classes/CS330/project/CS330_MOT"
 else:
     base_path = 'C:/Users/akayl/Desktop/CS330_MOT'
 sys.path.append(base_path)
-from data_cs import DataGenerator  
+from data_cs import DataGenerator, process_results
 from torch.utils.data import DataLoader, BatchSampler, RandomSampler
 from torchreid.utils import (check_isfile, load_pretrained_weights, compute_model_complexity)
 from sklearn.metrics import log_loss
@@ -66,7 +66,7 @@ NUM_CLASSES_FRAME_ID = 23  # Number of classes for frame ID
 NUM_CLASSES_PLAYER_ID = 23  # Number of classes for player ID
 WEIGHT_BBOX = 4.0
 WEIGHT_PLAYER_ID = 1.0
-ONE_ZERO_LABELS = True
+ONE_ZERO_LABELS = False
 
 
 
@@ -76,7 +76,7 @@ def make_parser():
     parser.add_argument("-n", "--name", type=str, default=None, help="model name")
 
     parser.add_argument(
-        "--path", default=base_path + "/dataset/test", help="path to images or video"
+"--path", default=base_path + "/data_cs/combined_test" if os.getlogin() == "darke" else "/dataset/test", help="path to images or video"
     )
     parser.add_argument(
         "--save_result",
@@ -102,7 +102,7 @@ def make_parser():
     parser.add_argument("--conf", default=None, type=float, help="test conf")
     parser.add_argument("--nms", default=None, type=float, help="test nms threshold")
     parser.add_argument("--tsize", default=None, type=int, help="test img size")
-    parser.add_argument("--fps", default=24, type=int, help="frame rate (fps)")
+    parser.add_argument("--fps", default=25, type=int, help="frame rate (fps)")
     parser.add_argument(
         "--fp16",
         dest="fp16",
@@ -150,7 +150,7 @@ def make_parser():
     parser.add_argument('--num_support', type=int, default=6, help='number of support examples per class in a task')
     parser.add_argument('--num_query', type=int, default=3, help='number of query examples per class in a task')
     parser.add_argument('--meta_batch_size', type=int, default=5, help='number of tasks per outer-loop update')
-    parser.add_argument('--meta_batch_size_miguel', type=int, default=10, help='number of tasks per outer-loop update')
+    # parser.add_argument('--meta_batch_size_miguel', type=int, default=10, help='number of tasks per outer-loop update')
 
     parser.add_argument('--test_batch_size', type=int, default=6, help='number of tasks per outer-loop update')
     parser.add_argument('--meta_train_iterations', type=int, default=2000000, help='number of baches of tasks to iterate through for train')
@@ -630,11 +630,11 @@ class MAML:
 
         last_best_step = 0 
         i = 0
-        divisor = args.meta_batch_size_miguel // args.meta_batch_size
+        # divisor = args.meta_batch_size_miguel // args.meta_batch_size
         f1_score = MulticlassF1Score(num_classes=NUM_CLASSES_FRAME_ID)
         acc_score = MulticlassAccuracy(num_classes=NUM_CLASSES_FRAME_ID)
-        if os.getlogin() == "DK" and args.meta_batch_size_miguel % args.meta_batch_size != 0 :
-            raise ValueError(f"batch sizes are not divisable.  {args.meta_batch_size_miguel}, {args.meta_batch_size}")
+        # if os.getlogin() == "darke" and args.meta_batch_size_miguel % args.meta_batch_size != 0 :
+        #     raise ValueError(f"batch sizes are not divisable.  {args.meta_batch_size_miguel}, {args.meta_batch_size}")
         print(f'Starting training at iteration {self._start_train_step}.')
         for i_step, (images, labels, sports_order) in tqdm(enumerate(dataloader_meta_train, start=self._start_train_step), total=args.meta_train_iterations):
             i += 1
@@ -645,21 +645,22 @@ class MAML:
             outer_loss, pre_adapt_accuracy_mean, post_adapt_accuracy_mean, accuracy_query = (
                 self._outer_step(images, labels, train=True)
             )
+            print(f"Outer Loss: {outer_loss}")
 
             if math.isnan(outer_loss.item()):
                 raise ValueError
             
-            if os.getlogin() == "DK":
-                outer_loss /= divisor
-                outer_loss.backward()  
-                if i % divisor == 0:
-                    self._optimizer.step()
-                    self._optimizer.zero_grad()
-                    i = 0
-            else:
-                outer_loss.backward()  
-                self._optimizer.step()
-                self._optimizer.zero_grad()
+            # if os.getlogin() == "darke":
+            #     outer_loss /= divisor
+            #     outer_loss.backward()  
+            #     if i % divisor == 0:
+            #         self._optimizer.step()
+            #         self._optimizer.zero_grad()
+            #         i = 0
+            # else:
+            outer_loss.backward()  
+            self._optimizer.step()
+            self._optimizer.zero_grad()
 
 
             # Write loss value to TensorBoard
@@ -763,12 +764,18 @@ class MAML:
                     #print("last best f1: ", best_f1)
                     if current_val_accuracy > best_val_accuracy:
                         best_val_accuracy = current_val_accuracy
+                        best_acc_step = i_step
                         print("NEW best accuracy: ", best_val_accuracy)
-                    if best_f1 > f1:
+                    if f1 > best_f1:
                         best_f1 = f1
+                        best_f1_step = i_step
                         print("NEW best f1: ", best_f1)
                     last_best_step = i_step
                     self._save(i_step, model_inner_state, optimizer_inner_state)  # Save the model checkpoint
+                    with open(self._log_dir + "/final_accuracies.txt", "w") as F:
+                        F.write(f"last best i_step: {last_best_step}\n\
+                                last best accuracy: {best_val_accuracy} at step: {best_acc_step}\n\
+                                last best f1: {best_f1} at step: {best_f1_step}")
                     print(f'Saved new best checkpoint with validation accuracy: {best_val_accuracy:.4f}')
             
                 
@@ -947,12 +954,12 @@ def main(exp, args):
 
     log_dir = args.log_dir
     if log_dir is None:
-        if os.getlogin() == "DK":
-            log_dir = f"logs/{args.experiment_name}{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size_miguel}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}"  
+        if os.getlogin() == "darke":
+            log_dir = f"D:/logs/{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}"  
         else:
             log_dir = f"logs/{args.model}/{args.experiment_name}/.Test_{args.test}.No_Pretrained_weights.way_{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}"  
     logger.info(f"Run parameters {log_dir}")
-    writer = tensorboard.SummaryWriter("logs/")
+    writer = tensorboard.SummaryWriter(log_dir)
 
     if args.conf is not None:
         exp.test_conf = args.conf
@@ -1118,12 +1125,12 @@ def main(exp, args):
                 process_sequence(predictor, extractor, img_dir, vis_folder, args)
             else:
                 logger.error(f"'img1' subfolder not found in {seq_dir}")
-    
+    process_results(args.experiment_name, base_path)
 
 if __name__ == "__main__":
     args = make_parser().parse_args()
     exp = get_exp(args.exp_file, args.name)
-    args.experiment_name = args.experiment_name or exp.exp_name
+    args.experiment_name = f"{args.num_way}.support_{args.num_support}.query_{args.num_query}.inner_steps_{args.num_inner_steps}.inner_lr_{args.inner_lr}.learn_inner_lrs_{args.learn_inner_lrs}.outer_lr_{args.outer_lr}.batch_size_{args.meta_batch_size}.train_iter_{args.meta_train_iterations}..val_iter_{args.meta_val_iterations}"
     main(exp, args)
 
 

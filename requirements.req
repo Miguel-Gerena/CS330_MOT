@@ -2,3 +2,4 @@ sympy
 configparser
 numpy
 scikit-learn
+torchvision

@@ -27,7 +27,7 @@ def calculate_accuracy(logits, labels, ONE_ZERO=False):
             else:
                 valid_labels = labels[i, j, labels[i, j] != 0]
                 top_n_predictions = predicted_classes[i, j, :len(valid_labels)]
-                top_n_predictions, _ = torch.sort(top_n_predictions)
+                # top_n_predictions, _ = torch.sort(top_n_predictions)
 
             # Get the top-N predictions where N is the number of valid labels
             # Count correct predictions
@@ -65,7 +65,7 @@ def calculate_accuracy_and_f1(logits, labels, f1, acc, ONE_ZERO=False):
             else:
                 valid_labels = labels[i, j, labels[i, j] != 0]
                 top_n_predictions = predicted_classes[i, j, :len(valid_labels)]
-                top_n_predictions, _ = torch.sort(top_n_predictions)
+                # top_n_predictions, _ = torch.sort(top_n_predictions)
 
             # Get the top-N predictions where N is the number of valid labels
             # Count correct predictions

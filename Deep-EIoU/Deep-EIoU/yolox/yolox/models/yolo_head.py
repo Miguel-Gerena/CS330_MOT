@@ -143,7 +143,7 @@ class YOLOXHead(nn.Module):
             conv.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
 
     def forward(self, xin, labels=None, imgs=None):
-        print("in yolo head before loop")
+        # print("in yolo head before loop")
         outputs = []
         origin_preds = []
         x_shifts = []
@@ -152,7 +152,7 @@ class YOLOXHead(nn.Module):
         for k, (cls_conv, reg_conv, stride_this_level, x) in enumerate(
             zip(self.cls_convs, self.reg_convs, self.strides, xin)
         ):
-            print("in loop")
+            # print("in loop")
             x = self.stems[k](x)
             cls_x = x
             reg_x = x
@@ -165,7 +165,7 @@ class YOLOXHead(nn.Module):
             obj_output = self.obj_preds[k](reg_feat)
 
             if self.training:
-                print("in if before concat")
+                # print("in if before concat")
                 output = torch.cat([reg_output, obj_output, cls_output], 1)
                 output, grid = self.get_output_and_grid(
                     output, k, stride_this_level, xin[0].type()
@@ -177,7 +177,7 @@ class YOLOXHead(nn.Module):
                     .fill_(stride_this_level)
                     .type_as(xin[0])
                 )
-                print("about to calc l1 loss")
+                # print("about to calc l1 loss")
                 if self.use_l1:
                     batch_size = reg_output.shape[0]
                     hsize, wsize = reg_output.shape[-2:]
@@ -195,7 +195,7 @@ class YOLOXHead(nn.Module):
                 )
 
             outputs.append(output)
-            print("received outputs")
+            # print("received outputs")
         if self.training:
             return self.get_losses(
                 imgs,
