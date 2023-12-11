@@ -26,7 +26,7 @@ def optimal_learning_rate():
 
 def optimal_batch():
         
-        for meta_batch_size in [16,32,64]:
+        for meta_batch_size in [10,32,64]:
             a = subprocess.run(["python", "tools/maml_demo.py", "--meta_batch_size", f"{meta_batch_size}"])
 
 optimal_batch()

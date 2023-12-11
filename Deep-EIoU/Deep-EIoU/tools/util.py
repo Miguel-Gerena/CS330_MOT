@@ -74,6 +74,7 @@ def calculate_accuracy_and_f1(logits, labels, f1, acc, ONE_ZERO=False):
                         correct_count += 1
                 total_valid_predictions += len(valid_labels)
 
+            # top_n_predictions = logits[i, j, :len(valid_labels)]
             f1.update(top_n_predictions, valid_labels)
             acc.update(top_n_predictions, valid_labels)
 
