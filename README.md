@@ -1,3 +1,46 @@
+# Enhancing Player Tracking Across Sports Domains Through Meta-Learning with Video Input
+
+## Stanford University
+
+**Authors**: Akayla Hackson, Lavinia Pedrollo, Miguel Gerena
+
+**Contact**: [akayla@stanford.edu](mailto:akayla@stanford.edu), [laviniap@stanford.edu](mailto:laviniap@stanford.edu), [miguelg2@stanford.edu](mailto:miguelg2@stanford.edu)
+
+---
+
+### Abstract
+This project integrates Model-Agnostic Meta-Learning (MAML) with the OSNet model within the Deep-ExpansionIoU (Deep-EIoU) tracking framework to enhance player tracking in sports. By leveraging MAML's quick adaptation capabilities and OSNet's robust feature extraction, we aim to improve tracking precision and efficiency. Our modified OSNet-MAML model achieves higher performance metrics than the state-of-the-art Deep-EIoU model across various tracking indices.
+
+---
+
+### Introduction
+Traditional player tracking systems often suffer from inefficiencies, particularly in sports where player movement is complex and unpredictable. Our project enhances the accuracy of player tracking in sports through the innovative use of meta-learning, specifically Model-Agnostic Meta-Learning (MAML), integrated with the OSNet model for feature extraction.
+
+---
+
+### Model Development
+- **Deep-EIoU Model**: Selected for its superior performance in sports environments, handling complex, nonlinear motion tracking without traditional methods like the Kalman filter.
+- **Integration of OSNet with MAML**: Focuses on the re-identification part of the tracking algorithm, enhancing adaptability to new tasks with limited data.
+
+---
+
+### Methodology
+- **Meta-Learning Framework**: MAML is employed to adapt the OSNet model quickly to new sports scenarios, optimizing it for scenarios where data is limited.
+- **Performance Enhancement**: The OSNet-MAML model shows improvements in multiple tracking metrics (e.g., HOTA, MOTA, IDF1, DetA, AssA) over the base Deep-EIoU model.
+
+---
+
+### Experiments and Results
+Our experiments demonstrate that the OSNet-MAML configuration outperforms traditional setups in the rigorous settings of the SportMOT dataset, particularly excelling in sports with high motion dynamics and unpredictability.
+
+---
+
+### Conclusion and Future Work
+Our integration of MAML with OSNet not only improves tracking accuracy but also sets a new benchmark in sports analytics by adapting effectively across varied sports domains. Future work will explore expanding this model’s adaptability and incorporating additional models like YOLOX into the MAML framework for a comprehensive improvement in tracking performance.
+
+---
+
+
 # Deep-EIoU Workflow Guide
 
 ## Deep-EIoU Setup
